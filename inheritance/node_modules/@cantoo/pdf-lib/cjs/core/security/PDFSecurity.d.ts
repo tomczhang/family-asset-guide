@@ -1,0 +1,75 @@
+import PDFContext from '../PDFContext';
+/**
+ * Interface representing user permissions.
+ *
+ * @interface UserPermissions
+ */
+interface UserPermissions {
+    /**
+     * Printing Permission
+     * For Security handlers of revision <= 2 : Boolean
+     * For Security handlers of revision >= 3 : 'lowResolution' or 'highResolution'
+     */
+    printing?: boolean | 'lowResolution' | 'highResolution';
+    /**
+     * Modify Content Permission (Other than 'annotating', 'fillingForms' and 'documentAssembly')
+     */
+    modifying?: boolean;
+    /** Copy or otherwise extract text and graphics from document */
+    copying?: boolean;
+    /** Permission to add or modify text annotations */
+    annotating?: boolean;
+    /**
+     * Security handlers of revision >= 3
+     * Fill in existing interactive form fields (including signature fields)
+     */
+    fillingForms?: boolean;
+    /**
+     * Security handlers of revision >= 3
+     * Extract text and graphics (in support of accessibility to users with disabilities or for other purposes)
+     */
+    contentAccessibility?: boolean;
+    /**
+     * Security handlers of revision >= 3
+     * Assemble the document (insert, rotate or delete pages and create bookmarks or thumbnail images)
+     */
+    documentAssembly?: boolean;
+}
+export type EncryptFn = (buffer: Uint8Array) => Uint8Array;
+/**
+ * Interface options for security
+ * @interface SecurityOptions
+ */
+export interface SecurityOptions {
+    /**
+     * Password that provides unlimited access to the encrypted document.
+     *
+     * Opening encrypted document with owner password allows full (owner) access to the document
+     */
+    ownerPassword?: string;
+    /** Password that restricts reader according to the defined permissions.
+     *
+     * Opening encrypted document with user password will have limitations in accordance to the permission defined.
+     */
+    userPassword?: string;
+    /** Object representing type of user permission enforced on the document
+     * @link {@link UserPermissions}
+     */
+    permissions?: UserPermissions;
+}
+declare class PDFSecurity {
+    context: PDFContext;
+    private id;
+    private encryption;
+    private keyBits;
+    private encryptionKey;
+    static create(context: PDFContext, options: SecurityOptions): PDFSecurity;
+    constructor(context: PDFContext, options: SecurityOptions);
+    private initialize;
+    private initializeV1V2V4;
+    private initializeV5;
+    getEncryptFn(obj: number, gen: number): (buffer: Uint8Array) => Uint8Array;
+    encrypt(): this;
+}
+export default PDFSecurity;
+//# sourceMappingURL=PDFSecurity.d.ts.map

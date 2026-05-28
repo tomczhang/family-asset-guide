@@ -1,0 +1,1 @@
+{"version":3,"file":"GraphElement.d.ts","sourceRoot":"","sources":["../../../src/utils/elements/GraphElement.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,MAAM,SAAS,CAAC;AAE5B,MAAM,CAAC,OAAO,CAAC,QAAQ,OAAO,YAAY;IACxC,QAAQ,CAAC,OAAO,CAAC,OAAO,EAAE,YAAY,GAAG,OAAO;IAEhD,QAAQ,CAAC,eAAe,CAAC,CAAC,EAAE,KAAK,GAAG,KAAK;IAEzC,QAAQ,CAAC,CAAC,EAAE,KAAK;CAIlB"}

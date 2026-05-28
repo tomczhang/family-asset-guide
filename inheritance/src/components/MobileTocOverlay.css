@@ -1,0 +1,121 @@
+.toc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 25, 23, 0.4);
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.toc-panel {
+  width: 280px;
+  max-width: 80vw;
+  height: 100%;
+  background: #fff;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  animation: toc-slide-in 0.2s ease-out;
+}
+
+@keyframes toc-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.toc-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--stone-200);
+}
+
+.toc-panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--stone-900);
+}
+
+.toc-panel-close {
+  color: var(--stone-400);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.toc-panel-close:active {
+  background: var(--stone-100);
+}
+
+.toc-panel-nav {
+  flex: 1;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toc-panel-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  text-align: left;
+  color: var(--stone-600);
+  font-size: 14px;
+  transition: all 0.15s;
+}
+
+.toc-panel-item:active {
+  background: var(--stone-50);
+}
+
+.toc-panel-item--active {
+  color: var(--amber-700);
+  background: rgba(245, 158, 11, 0.06);
+  font-weight: 500;
+}
+
+.toc-panel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stone-300);
+  flex-shrink: 0;
+}
+
+.toc-panel-item--active .toc-panel-dot {
+  background: var(--amber-400);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+}
+
+.toc-panel-step-num {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--stone-400);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.toc-panel-item--active .toc-panel-step-num {
+  color: var(--amber-600);
+}
+
+.toc-panel-label {
+  flex: 1;
+}
+
+.toc-panel-count {
+  font-size: 11px;
+  color: var(--stone-400);
+  background: var(--stone-100);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.toc-panel-item--active .toc-panel-count {
+  background: var(--amber-100);
+  color: var(--amber-700);
+}

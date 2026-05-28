@@ -1,0 +1,37 @@
+import { distance, distanceCoords, isEqual, minus, plus, times, unitVector, } from '../maths.js';
+import GraphElement from './GraphElement.js';
+import Point from './Point.js';
+export default class Circle extends GraphElement {
+    constructor(O = new Point(), r = 1) {
+        super();
+        this.O = O;
+        this.r = r;
+    }
+    ray() {
+        return this.r;
+    }
+    center() {
+        return this.O;
+    }
+    /** This is used to standardize type Circle | Arc */
+    getCircle() {
+        return this;
+    }
+    isEqual(element) {
+        return (element instanceof Circle &&
+            this.center().isEqual(element.center()) &&
+            isEqual(this.ray(), element.ray()));
+    }
+    includes(P) {
+        return isEqual(distance(this.center(), P), this.ray());
+    }
+    orthoProjection(P) {
+        const center = this.center().toCoords();
+        const coords = P.toCoords();
+        if (distanceCoords(coords, center) < this.ray())
+            return P;
+        const vect = times(unitVector(minus(coords, center)), this.ray());
+        return new Point(plus(center, vect));
+    }
+}
+//# sourceMappingURL=Circle.js.map

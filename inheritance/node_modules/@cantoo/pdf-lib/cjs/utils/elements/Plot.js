@@ -1,0 +1,46 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const tslib_1 = require("tslib");
+const maths_1 = require("../maths");
+const GraphElement_1 = tslib_1.__importDefault(require("./GraphElement"));
+const Point_1 = tslib_1.__importDefault(require("./Point"));
+const Segment_1 = tslib_1.__importDefault(require("./Segment"));
+class Plot extends GraphElement_1.default {
+    constructor(points = []) {
+        super();
+        this.points = points;
+    }
+    getPoints() {
+        return [...this.points];
+    }
+    translate(translationVector) {
+        this.points = this.points.map((point) => (0, maths_1.plus)(point, translationVector));
+    }
+    isEqual(element) {
+        if (!(element instanceof Plot))
+            return false;
+        const points = this.getPoints().map((coord) => new Point_1.default(coord));
+        const points2 = element.getPoints().map((coord) => new Point_1.default(coord));
+        return (points.every((point, i) => point.isEqual(points2[i])) ||
+            points.reverse().every((point, i) => point.isEqual(points2[i])));
+    }
+    orthoProjection(P) {
+        const points = this.getPoints();
+        const orthos = points
+            .slice(0, -1)
+            .map((pt, i) => new Segment_1.default(new Point_1.default(pt), new Point_1.default(points[i + 1])))
+            .map((seg) => seg.orthoProjection(P));
+        let min = Number.POSITIVE_INFINITY;
+        let closest = new Point_1.default(points[0]);
+        orthos.forEach((ortho) => {
+            const d = ortho.distance(P);
+            if (d < min) {
+                min = d;
+                closest = ortho;
+            }
+        });
+        return closest;
+    }
+}
+exports.default = Plot;
+//# sourceMappingURL=Plot.js.map

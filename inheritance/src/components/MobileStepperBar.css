@@ -1,0 +1,102 @@
+.mobile-stepper-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+}
+
+.mobile-stepper-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(231, 229, 228, 0.6);
+}
+
+.stepper-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.stepper-btn-placeholder {
+  width: 88px;
+}
+
+.stepper-btn-prev {
+  color: var(--stone-600);
+  background: var(--stone-100);
+}
+
+.stepper-btn-prev:active {
+  background: var(--stone-200);
+}
+
+.stepper-btn-next {
+  color: #fff;
+  background: var(--stone-900);
+}
+
+.stepper-btn-next:active {
+  background: var(--stone-700);
+}
+
+.stepper-btn-generate {
+  color: var(--amber-50);
+  background: linear-gradient(to right, var(--amber-700), var(--amber-800));
+}
+
+.stepper-btn-generate:active {
+  opacity: 0.9;
+}
+
+.stepper-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stepper-step-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--stone-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.stepper-step-count {
+  font-size: 11px;
+  color: var(--stone-400);
+}
+
+.mobile-fab {
+  position: absolute;
+  top: -52px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--stone-900);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.mobile-fab:active {
+  background: var(--stone-700);
+}

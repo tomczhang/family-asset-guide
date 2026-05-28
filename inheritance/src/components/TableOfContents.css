@@ -1,0 +1,121 @@
+.toc {
+  position: fixed;
+  top: var(--toolbar-height);
+  right: 0;
+  width: var(--sidebar-width);
+  height: calc(100vh - var(--toolbar-height));
+  border-left: 1px solid rgba(231, 229, 228, 0.6);
+  background: #fff;
+  z-index: 10;
+  overflow-y: auto;
+}
+
+.toc-inner {
+  padding: var(--sp-6) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toc-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--stone-400);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: var(--sp-5);
+}
+
+.toc-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.toc-nav::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--stone-200);
+}
+
+.toc-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--stone-500);
+  font-size: 13px;
+  transition: all 0.15s;
+  position: relative;
+}
+
+.toc-item:hover {
+  color: var(--stone-800);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.toc-item--active {
+  color: var(--amber-700);
+  font-weight: 500;
+}
+
+.toc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stone-300);
+  flex-shrink: 0;
+  transition: all 0.15s;
+  position: relative;
+  z-index: 1;
+}
+
+.toc-item--active .toc-dot {
+  background: var(--amber-400);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+}
+
+.toc-label {
+  flex: 1;
+}
+
+.toc-count {
+  font-size: 11px;
+  color: var(--stone-400);
+  background: var(--stone-100);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.toc-item--active .toc-count {
+  background: var(--amber-100);
+  color: var(--amber-700);
+}
+
+.toc-generate-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 10px;
+  margin-top: var(--sp-5);
+  background: linear-gradient(to right, var(--stone-900), var(--stone-700));
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  transition: opacity 0.15s;
+}
+
+.toc-generate-btn:hover {
+  opacity: 0.9;
+}
