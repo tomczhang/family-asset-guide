@@ -544,13 +544,13 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
   return await pdf.save();
 }
 
-export function downloadPdf(bytes: Uint8Array, familyName: string) {
+export function downloadPdf(bytes: Uint8Array) {
   const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   const ts = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `${familyName || "家庭"}-应急手册-${ts}.pdf`;
+  a.download = `家庭应急手册-${ts}.pdf`;
   a.click();
   URL.revokeObjectURL(url);
 }

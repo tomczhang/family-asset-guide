@@ -86,7 +86,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const a = document.createElement("a");
     const ts = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `${doc.meta.familyName || "家庭"}-UNENCRYPTED-应急手册-${ts}.json`;
+    a.download = `家庭应急手册-UNENCRYPTED-${ts}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setDraftStatus({ kind: "exported", at: Date.now() });

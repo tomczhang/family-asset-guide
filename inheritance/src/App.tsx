@@ -13,7 +13,7 @@ import { PasswordModal } from "./components/PasswordModal";
 import { generatePdf, downloadPdf } from "./pdf/generate";
 
 function AppContent() {
-  const { doc, dispatch, openPasswordModal, setOpenPasswordModal } = useAppState();
+  const { doc, openPasswordModal, setOpenPasswordModal } = useAppState();
   const isMobile = useIsMobile();
   const [currentStep, setCurrentStep] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
@@ -38,7 +38,7 @@ function AppContent() {
     async (password: string) => {
       try {
         const bytes = await generatePdf(doc, password);
-        downloadPdf(bytes, doc.meta.familyName);
+        downloadPdf(bytes);
         setOpenPasswordModal(false);
       } catch (err) {
         alert(`PDF 生成失败: ${err instanceof Error ? err.message : "未知错误"}`);
@@ -79,33 +79,6 @@ function AppContent() {
                 </ul>
               </div>
             )}
-
-            <div className="card" style={{ padding: "var(--sp-4)", marginBottom: "var(--sp-6)" }}>
-              <div className="field-group">
-                <div className="field">
-                  <label className="field-label">家庭姓氏</label>
-                  <input
-                    className="field-input"
-                    placeholder="例：张"
-                    value={doc.meta.familyName}
-                    onChange={(e) => dispatch({ type: "SET_META", field: "familyName", value: e.target.value })}
-                    autoComplete="off"
-                    data-lpignore="true"
-                  />
-                </div>
-                <div className="field">
-                  <label className="field-label">密码持有人</label>
-                  <input
-                    className="field-input"
-                    placeholder="例：配偶张明 / 李律师"
-                    value={doc.meta.passwordHolderHint}
-                    onChange={(e) => dispatch({ type: "SET_META", field: "passwordHolderHint", value: e.target.value })}
-                    autoComplete="off"
-                    data-lpignore="true"
-                  />
-                </div>
-              </div>
-            </div>
 
             {isMobile ? (
               (() => {
