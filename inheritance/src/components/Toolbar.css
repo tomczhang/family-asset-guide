@@ -41,6 +41,16 @@
   gap: var(--sp-2);
 }
 
+.toolbar-privacy {
+  display: flex;
+  align-items: center;
+  color: var(--stone-400);
+}
+
+.toolbar-privacy--on {
+  color: var(--amber-700);
+}
+
 .toolbar-menu-wrap {
   position: relative;
 }

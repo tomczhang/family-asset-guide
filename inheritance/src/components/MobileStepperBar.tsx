@@ -1,16 +1,16 @@
-import { STEP_LABELS } from "../App";
 import "./MobileStepperBar.css";
 
 interface Props {
   currentStep: number;
   totalSteps: number;
+  currentLabel: string;
   onPrev: () => void;
   onNext: () => void;
   onGenerate: () => void;
   onOpenToc: () => void;
 }
 
-export function MobileStepperBar({ currentStep, totalSteps, onPrev, onNext, onGenerate, onOpenToc }: Props) {
+export function MobileStepperBar({ currentStep, totalSteps, currentLabel, onPrev, onNext, onGenerate, onOpenToc }: Props) {
   const isFirst = currentStep === 0;
   const isLast = currentStep === totalSteps - 1;
 
@@ -29,7 +29,7 @@ export function MobileStepperBar({ currentStep, totalSteps, onPrev, onNext, onGe
         )}
 
         <div className="stepper-indicator">
-          <span className="stepper-step-label">{STEP_LABELS[currentStep]}</span>
+          <span className="stepper-step-label">{currentLabel}</span>
           <span className="stepper-step-count">{currentStep + 1} / {totalSteps}</span>
         </div>
 

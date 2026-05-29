@@ -14,13 +14,15 @@ export function TableOfContents() {
 
   const chapters: Chapter[] = [
     { id: "chapter-assets", label: "资产清单", count: doc.assets.length },
-    {
-      id: "chapter-access",
-      label: "账户访问与 2FA",
-      count: doc.access.twoFactorEntries.length + doc.access.seals.length,
-    },
-    { id: "chapter-sop", label: "五阶段 SOP", count: doc.sopStages.length },
-    { id: "chapter-custom", label: "自定义区", count: doc.customSections.length },
+    ...(doc.accessRemoved
+      ? []
+      : [{ id: "chapter-access", label: "密码指引", count: doc.access.seals.length }]),
+    ...(doc.sopRemoved
+      ? []
+      : [{ id: "chapter-sop", label: "紧急响应流程", count: doc.sopStages.length }]),
+    ...(doc.customRemoved
+      ? []
+      : [{ id: "chapter-custom", label: "自定义区", count: doc.customSections.length }]),
   ];
 
   useEffect(() => {

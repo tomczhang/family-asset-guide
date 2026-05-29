@@ -2,6 +2,41 @@ import { PDFDocument, rgb, type PDFPage, type PDFFont } from "@cantoo/pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { Document } from "../state/types";
 import { ASSET_TYPE_LABELS, CURRENCY_LABELS } from "../state/types";
+import { wrapDraft, unwrapDraft } from "../state/document";
+
+export const DRAFT_ATTACHMENT_NAME = "family-asset-guide-draft.json";
+
+// 从（加密的）PDF 中提取此前嵌入的草稿数据，用于直接导入 PDF 继续编辑。
+export async function extractDraftFromPdf(
+  bytes: Uint8Array | ArrayBuffer,
+  password: string,
+): Promise<Document> {
+  let pdf: PDFDocument;
+  try {
+    pdf = await PDFDocument.load(bytes, { password });
+  } catch {
+    throw new Error("密码错误，或该 PDF 无法解锁。");
+  }
+
+  const attachments = pdf.getAttachments();
+  if (attachments.length === 0) {
+    throw new Error("此 PDF 不包含可导入的草稿数据（可能由旧版本生成）。");
+  }
+
+  for (const att of attachments) {
+    try {
+      const text = new TextDecoder().decode(att.data);
+      const raw = JSON.parse(text);
+      if (raw && typeof raw === "object" && "schemaVersion" in raw && "document" in raw) {
+        return unwrapDraft(raw);
+      }
+    } catch {
+      // 跳过无法解析的附件，继续尝试下一个
+    }
+  }
+
+  throw new Error("此 PDF 不包含可导入的草稿数据（可能由旧版本生成）。");
+}
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -242,11 +277,13 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
   drawText(ctx, "目录", 20, COLORS.black);
   ctx.y -= 8;
 
-  const tocItems = [
-    "一、资产清单", "二、账户访问与双因素认证",
-    "三、五阶段操作流程（SOP）",
-    ...(doc.customSections.length > 0 ? ["四、自定义章节"] : []),
-  ];
+  const cnNum = ["一", "二", "三", "四", "五"];
+  let chapterNo = 0;
+  const tocNames = ["资产清单"];
+  if (!doc.accessRemoved) tocNames.push("密码指引");
+  if (!doc.sopRemoved) tocNames.push("紧急响应流程");
+  if (!doc.customRemoved && doc.customSections.length > 0) tocNames.push("自定义章节");
+  const tocItems = tocNames.map((name, i) => `${cnNum[i]}、${name}`);
   for (const item of tocItems) {
     drawBoxedText(ctx, item, 10.5, 30, {
       bgColor: COLORS.white, borderColor: COLORS.border, textColor: COLORS.body,
@@ -255,98 +292,107 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
 
   // ===== 一、资产清单 =====
   newPage(ctx);
-  drawSectionHeader(ctx, "第一章", "资产清单");
+  drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "资产清单");
 
   if (doc.assets.length === 0) {
     drawText(ctx, "（未填写资产信息）", 10, COLORS.light);
   }
   for (let i = 0; i < doc.assets.length; i++) {
     const a = doc.assets[i]!;
+    const isInsurance = a.type === "insurance";
     drawCard(ctx, String(i + 1).padStart(2, "0"), [
       { label: "资产类型", value: ASSET_TYPE_LABELS[a.type] },
       { label: "机构名称", value: a.institution },
-      { label: "账户号码", value: a.accountNumber },
-      { label: "登录网址", value: a.loginUrl },
-      { label: "联系电话", value: a.contactPhone },
-      ...(a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
-      { label: "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}` },
+      ...(isInsurance ? [
+        ...(a.insuranceKind ? [{ label: "险种", value: a.insuranceKind }] : []),
+        { label: "保单号", value: a.accountNumber },
+        { label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}` },
+        ...(a.insuredPerson ? [{ label: "保险人", value: a.insuredPerson }] : []),
+        { label: "缴费年限", value: a.paymentYears || "—" },
+        { label: "缴费状态", value: a.stillPaying ? "缴费中" : "已缴清" },
+      ] : [
+        { label: "账户号码", value: a.accountNumber },
+        ...(a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
+        ...(a.registerEmail ? [{ label: "注册邮箱", value: a.registerEmail }] : []),
+        ...(a.bindPhone ? [{ label: "绑定手机", value: a.bindPhone }] : []),
+        { label: "登录网址", value: a.loginUrl },
+        { label: "联系电话", value: a.contactPhone },
+        ...(a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
+        { label: "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}` },
+      ]),
       { label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" },
       ...(a.notes ? [{ label: "备注", value: a.notes }] : []),
     ]);
   }
 
-  // ===== 二、账户访问 =====
-  newPage(ctx);
-  drawSectionHeader(ctx, "第二章", "账户访问与双因素认证");
+  // ===== 二、密码指引 =====
+  if (!doc.accessRemoved) {
+    newPage(ctx);
+    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "密码指引");
 
-  const methodLabels: Record<string, string> = {
-    totp: "TOTP 验证器", sms: "短信验证", hardware_key: "硬件密钥",
-    email: "邮箱验证", other: "其他",
-  };
+    const methodLabels: Record<string, string> = {
+      totp: "TOTP 验证器", sms: "短信验证", hardware_key: "硬件密钥",
+      email: "邮箱验证", other: "其他", none: "无",
+    };
 
-  if (doc.access.twoFactorEntries.length > 0) {
-    drawText(ctx, "双因素认证 (2FA)", 12, COLORS.dark);
-    ctx.y -= 4;
-    for (let i = 0; i < doc.access.twoFactorEntries.length; i++) {
-      const entry = doc.access.twoFactorEntries[i]!;
-      const asset = doc.assets.find((a) => a.id === entry.assetId);
-      drawCard(ctx, `2FA-${String(i + 1).padStart(2, "0")}`, [
-        { label: "关联账户", value: asset?.institution || "未知" },
-        { label: "验证方式", value: methodLabels[entry.method] || entry.method },
-        { label: "恢复指引", value: entry.recoveryInstructions },
-      ]);
+    if (doc.access.seals.length > 0) {
+      for (let i = 0; i < doc.access.seals.length; i++) {
+        const s = doc.access.seals[i]!;
+        const linkedNames = s.linkedAssetIds
+          .map((id) => doc.assets.find((a) => a.id === id))
+          .filter(Boolean)
+          .map((a) => a!.institution || ASSET_TYPE_LABELS[a!.type])
+          .join("、");
+        drawCard(ctx, String(i + 1).padStart(2, "0"), [
+          { label: "标签", value: s.label },
+          { label: "存放位置", value: s.location },
+          ...(s.passwordHint ? [{ label: "密码说明", value: s.passwordHint }] : []),
+          ...(s.twoFactorMethod !== "none" ? [
+            { label: "2FA 方式", value: methodLabels[s.twoFactorMethod] || s.twoFactorMethod },
+            ...(s.twoFactorRecovery ? [{ label: "2FA 恢复", value: s.twoFactorRecovery }] : []),
+          ] : []),
+          ...(linkedNames ? [{ label: "关联资产", value: linkedNames }] : []),
+          ...(s.notes ? [{ label: "备注", value: s.notes }] : []),
+        ]);
+      }
+    } else {
+      drawText(ctx, "（未填写密码指引信息）", 10, COLORS.light);
     }
-  }
-
-  if (doc.access.seals.length > 0) {
-    ctx.y -= 6;
-    drawText(ctx, "密封件清单", 12, COLORS.dark);
-    ctx.y -= 4;
-    for (let i = 0; i < doc.access.seals.length; i++) {
-      const s = doc.access.seals[i]!;
-      drawCard(ctx, String(i + 1).padStart(2, "0"), [
-        { label: "标签", value: s.label },
-        { label: "存放位置", value: s.location },
-        ...(s.notes ? [{ label: "备注", value: s.notes }] : []),
-      ]);
-    }
-  }
-
-  if (doc.access.twoFactorEntries.length === 0 && doc.access.seals.length === 0) {
-    drawText(ctx, "（未填写账户访问信息）", 10, COLORS.light);
   }
 
   // ===== 三、SOP =====
-  newPage(ctx);
-  drawSectionHeader(ctx, "第三章", "五阶段操作流程");
+  if (!doc.sopRemoved) {
+    newPage(ctx);
+    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "紧急响应流程");
 
-  for (let i = 0; i < doc.sopStages.length; i++) {
-    const stage = doc.sopStages[i]!;
-    const headerH = 28;
-    need(ctx, headerH + 30);
+    for (let i = 0; i < doc.sopStages.length; i++) {
+      const stage = doc.sopStages[i]!;
+      const headerH = 28;
+      need(ctx, headerH + 30);
 
-    const headerY = ctx.y - headerH;
-    ctx.page.drawRectangle({
-      x: MARGIN, y: headerY, width: CONTENT_W, height: headerH, color: COLORS.amber100,
-    });
-    const stageLabel = `${String(i + 1).padStart(2, "0")}  ${stage.title}`;
-    ctx.page.drawText(stageLabel, {
-      x: MARGIN + 10, y: textBaseline(headerY, headerH, 10.5),
-      size: 10.5, font, color: COLORS.amber700,
-    });
-    ctx.y = headerY - 8;
+      const headerY = ctx.y - headerH;
+      ctx.page.drawRectangle({
+        x: MARGIN, y: headerY, width: CONTENT_W, height: headerH, color: COLORS.amber100,
+      });
+      const stageLabel = `${String(i + 1).padStart(2, "0")}  ${stage.title}`;
+      ctx.page.drawText(stageLabel, {
+        x: MARGIN + 10, y: textBaseline(headerY, headerH, 10.5),
+        size: 10.5, font, color: COLORS.amber700,
+      });
+      ctx.y = headerY - 8;
 
-    for (const line of stage.content.split("\n")) {
-      need(ctx, 17);
-      drawText(ctx, line, 9.5, COLORS.body, MARGIN + 12);
+      for (const line of stage.content.split("\n")) {
+        need(ctx, 17);
+        drawText(ctx, line, 9.5, COLORS.body, MARGIN + 12);
+      }
+      ctx.y -= 8;
     }
-    ctx.y -= 8;
   }
 
   // ===== 四、自定义 =====
-  if (doc.customSections.length > 0) {
+  if (!doc.customRemoved && doc.customSections.length > 0) {
     newPage(ctx);
-    drawSectionHeader(ctx, "第四章", "自定义章节");
+    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "自定义章节");
 
     for (const s of doc.customSections) {
       need(ctx, 40);
@@ -376,6 +422,13 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
       y: 26, size: 7.5, font, color: COLORS.light,
     });
   }
+
+  // 嵌入草稿数据（便于将来直接导入此 PDF 继续编辑）
+  const draftBytes = new TextEncoder().encode(JSON.stringify(wrapDraft(doc)));
+  await pdf.attach(draftBytes, DRAFT_ATTACHMENT_NAME, {
+    mimeType: "application/json",
+    description: "family-asset-guide draft data",
+  });
 
   // 加密
   pdf.encrypt({

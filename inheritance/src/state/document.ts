@@ -26,8 +26,11 @@ export function createEmptyDocument(): Document {
     },
     assets: [],
     access: { twoFactorEntries: [], seals: [] },
+    accessRemoved: false,
     sopStages: DEFAULT_SOP_STAGES(),
+    sopRemoved: false,
     customSections: [],
+    customRemoved: false,
   };
 }
 
@@ -44,10 +47,15 @@ export type DocAction =
   | { type: "ADD_SEAL" }
   | { type: "UPDATE_SEAL"; id: string; patch: Partial<SealedEnvelope> }
   | { type: "REMOVE_SEAL"; id: string }
+  | { type: "REMOVE_ACCESS_MODULE" }
+  | { type: "ADD_SOP_STAGE" }
   | { type: "UPDATE_SOP_STAGE"; id: string; patch: Partial<SopStage> }
+  | { type: "REMOVE_SOP_STAGE"; id: string }
+  | { type: "REMOVE_SOP_MODULE" }
   | { type: "ADD_CUSTOM_SECTION" }
   | { type: "UPDATE_CUSTOM_SECTION"; id: string; patch: Partial<CustomSection> }
   | { type: "REMOVE_CUSTOM_SECTION"; id: string }
+  | { type: "REMOVE_CUSTOM_MODULE" }
   | { type: "LOAD_DOCUMENT"; document: Document }
   | { type: "CLEAR_ALL" };
 
@@ -74,6 +82,9 @@ export function docReducer(state: Document, action: DocAction): Document {
             institutionId: inst ? inst.id : "",
             institution: inst ? inst.name : "",
             accountNumber: "",
+            registerEmail: "",
+            bindPhone: "",
+            loginUsername: "",
             loginUrl: inst ? inst.website : "",
             contactPhone: inst ? inst.phone : "",
             appDownload: inst ? inst.appDownload : "",
@@ -82,6 +93,10 @@ export function docReducer(state: Document, action: DocAction): Document {
             hasBeneficiary: false,
             beneficiary: "",
             notes: "",
+            insuranceKind: "",
+            insuredPerson: "",
+            paymentYears: "",
+            stillPaying: true,
           },
         ],
       });
@@ -159,9 +174,12 @@ export function docReducer(state: Document, action: DocAction): Document {
             ...state.access.seals,
             {
               id: genId(),
-              label: `密封件 #${String.fromCharCode(65 + state.access.seals.length)}`,
+              label: `密码指引 #${String.fromCharCode(65 + state.access.seals.length)}`,
               location: "",
               linkedAssetIds: [],
+              passwordHint: "",
+              twoFactorMethod: "none",
+              twoFactorRecovery: "",
               notes: "",
             },
           ],
@@ -188,6 +206,22 @@ export function docReducer(state: Document, action: DocAction): Document {
         },
       });
 
+    case "REMOVE_ACCESS_MODULE":
+      return touch({
+        ...state,
+        accessRemoved: true,
+        access: { twoFactorEntries: [], seals: [] },
+      });
+
+    case "ADD_SOP_STAGE":
+      return touch({
+        ...state,
+        sopStages: [
+          ...state.sopStages,
+          { id: genId(), title: "", content: "" },
+        ],
+      });
+
     case "UPDATE_SOP_STAGE":
       return touch({
         ...state,
@@ -195,6 +229,15 @@ export function docReducer(state: Document, action: DocAction): Document {
           s.id === action.id ? { ...s, ...action.patch } : s,
         ),
       });
+
+    case "REMOVE_SOP_STAGE":
+      return touch({
+        ...state,
+        sopStages: state.sopStages.filter((s) => s.id !== action.id),
+      });
+
+    case "REMOVE_SOP_MODULE":
+      return touch({ ...state, sopRemoved: true, sopStages: [] });
 
     case "ADD_CUSTOM_SECTION":
       return touch({
@@ -218,6 +261,9 @@ export function docReducer(state: Document, action: DocAction): Document {
         ...state,
         customSections: state.customSections.filter((s) => s.id !== action.id),
       });
+
+    case "REMOVE_CUSTOM_MODULE":
+      return touch({ ...state, customRemoved: true, customSections: [] });
 
     case "LOAD_DOCUMENT":
       return action.document;
@@ -267,11 +313,33 @@ function migrate(envelope: DraftEnvelope): Document {
       appDownload: (asset["appDownload"] as string) ?? "",
       hasBeneficiary: (asset["hasBeneficiary"] as boolean) ?? false,
       beneficiary: (asset["beneficiary"] as string) ?? "",
+      registerEmail: (asset["registerEmail"] as string) ?? "",
+      bindPhone: (asset["bindPhone"] as string) ?? "",
+      loginUsername: (asset["loginUsername"] as string) ?? "",
+      insuranceKind: (asset["insuranceKind"] as string) ?? "",
+      insuredPerson: (asset["insuredPerson"] as string) ?? "",
+      paymentYears: (asset["paymentYears"] as string) ?? "",
+      stillPaying: (asset["stillPaying"] as boolean) ?? true,
+      notes: (asset["notes"] as string) ?? "",
     };
   });
+  doc.access.seals = doc.access.seals.map((s) => {
+    const seal = s as unknown as Record<string, unknown>;
+    return {
+      ...s,
+      passwordHint: (seal["passwordHint"] as string) ?? "",
+      twoFactorMethod: ((seal["twoFactorMethod"] as string) ?? "none") as SealedEnvelope["twoFactorMethod"],
+      twoFactorRecovery: (seal["twoFactorRecovery"] as string) ?? "",
+    };
+  });
+  doc.access.twoFactorEntries = [];
   if (!doc.meta.passwordHolderHint) {
     doc.meta.passwordHolderHint = "";
   }
+  const rawDoc = envelope.document as unknown as Record<string, unknown>;
+  doc.sopRemoved = rawDoc["sopRemoved"] === true;
+  doc.accessRemoved = rawDoc["accessRemoved"] === true;
+  doc.customRemoved = rawDoc["customRemoved"] === true;
   return doc;
 }
 

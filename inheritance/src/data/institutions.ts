@@ -214,6 +214,30 @@ export const INSTITUTIONS: Institution[] = [
     appDownload: "App Store / Google Play 搜索 myPrudential",
     assetTypes: ["insurance"],
   },
+  {
+    id: "huagui",
+    name: "华贵人寿",
+    website: "https://www.huaguilife.com",
+    phone: "400-900-0351",
+    appDownload: "关注微信公众号「华贵保险」在线服务",
+    assetTypes: ["insurance"],
+  },
+  {
+    id: "junlong",
+    name: "君龙人寿",
+    website: "https://www.dragonlife.com.cn",
+    phone: "400-889-1855",
+    appDownload: "关注微信公众号「君龙人寿」在线服务",
+    assetTypes: ["insurance"],
+  },
+  {
+    id: "xintai",
+    name: "信泰人寿",
+    website: "https://www.sinntay.com",
+    phone: "400-886-5299",
+    appDownload: "App Store / 各应用商店搜索 信泰保险",
+    assetTypes: ["insurance"],
+  },
   // ===== 加密货币 =====
   {
     id: "binance",

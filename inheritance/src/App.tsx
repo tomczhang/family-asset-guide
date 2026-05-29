@@ -12,15 +12,27 @@ import { MobileTocOverlay } from "./components/MobileTocOverlay";
 import { PasswordModal } from "./components/PasswordModal";
 import { generatePdf, downloadPdf } from "./pdf/generate";
 
-const STEP_EDITORS: Array<() => JSX.Element> = [AssetEditor, AccessEditor, SopEditor, CustomSectionEditor];
-
-export const STEP_LABELS = ["资产清单", "账户访问与 2FA", "五阶段 SOP", "自定义区"] as const;
-
 function AppContent() {
   const { doc, openPasswordModal, setOpenPasswordModal } = useAppState();
   const isMobile = useIsMobile();
   const [currentStep, setCurrentStep] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
+
+  const steps: Array<{ Editor: () => JSX.Element | null; label: string; count: number }> = [
+    { Editor: AssetEditor, label: "资产清单", count: doc.assets.length },
+    ...(doc.accessRemoved
+      ? []
+      : [{ Editor: AccessEditor, label: "密码指引", count: doc.access.seals.length }]),
+    ...(doc.sopRemoved
+      ? []
+      : [{ Editor: SopEditor, label: "紧急响应流程", count: doc.sopStages.length }]),
+    ...(doc.customRemoved
+      ? []
+      : [{ Editor: CustomSectionEditor, label: "自定义区", count: doc.customSections.length }]),
+  ];
+  const safeStep = Math.min(currentStep, steps.length - 1);
+  const stepLabels = steps.map((s) => s.label);
+  const stepCounts = steps.map((s) => s.count);
 
   const handleGenerate = useCallback(
     async (password: string) => {
@@ -40,13 +52,6 @@ function AppContent() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  const stepCounts = [
-    doc.assets.length,
-    doc.access.twoFactorEntries.length + doc.access.seals.length,
-    doc.sopStages.length,
-    doc.customSections.length,
-  ];
-
   return (
     <>
       <Toolbar isMobile={isMobile} />
@@ -59,20 +64,25 @@ function AppContent() {
               </h1>
               {!isMobile && (
                 <p style={{ color: "var(--stone-500)", fontSize: 14 }}>
-                  填写家庭资产信息，生成 AES-256 加密 PDF，确保跨境资产的有序传承与应急处置。
+                  维护家庭应急手册是一个晴天修屋顶的操作，雨什么时候下我们说不准，但趁着晴天把屋顶修结实，才能给自己和家人一份真的踏实。
                 </p>
               )}
             </div>
 
             {!isMobile && (
-              <div className="warning-banner">
-                ⚠ 本工具完全离线运行，不发送任何网络请求。所有数据仅存在于当前页面，关闭即丢失，请及时导出草稿。
+              <div className="warning-banner" style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--sp-2)" }}>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 13, lineHeight: 1.8 }}>
+                  <li>✈️ 完全离线运行，数据不经过任何服务器，零泄露风险</li>
+                  <li>🔐 导出为 AES-256 加密 PDF，军事级安全防护</li>
+                  <li>⚡ 选机构 → 填账号、资产、密码保存地 → 一键生成，三步极简</li>
+                  <li>⚠️ 所有数据仅存在于当前页面，关闭即丢失，请及时导出草稿</li>
+                </ul>
               </div>
             )}
 
             {isMobile ? (
               (() => {
-                const StepEditor = STEP_EDITORS[currentStep]!;
+                const StepEditor = steps[safeStep]!.Editor;
                 return <StepEditor />;
               })()
             ) : (
@@ -91,17 +101,18 @@ function AppContent() {
       {isMobile && (
         <>
           <MobileStepperBar
-            currentStep={currentStep}
-            totalSteps={4}
-            onPrev={() => goToStep(currentStep - 1)}
-            onNext={() => goToStep(currentStep + 1)}
+            currentStep={safeStep}
+            totalSteps={steps.length}
+            currentLabel={stepLabels[safeStep] ?? ""}
+            onPrev={() => goToStep(safeStep - 1)}
+            onNext={() => goToStep(safeStep + 1)}
             onGenerate={() => setOpenPasswordModal(true)}
             onOpenToc={() => setTocOpen(true)}
           />
           <MobileTocOverlay
             open={tocOpen}
-            currentStep={currentStep}
-            stepLabels={STEP_LABELS}
+            currentStep={safeStep}
+            stepLabels={stepLabels}
             stepCounts={stepCounts}
             onSelect={(step) => { setTocOpen(false); goToStep(step); }}
             onClose={() => setTocOpen(false)}

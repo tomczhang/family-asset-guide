@@ -38,6 +38,9 @@ export interface Asset {
   institutionId: string;
   institution: string;
   accountNumber: string;
+  registerEmail: string;
+  bindPhone: string;
+  loginUsername: string;
   loginUrl: string;
   contactPhone: string;
   appDownload: string;
@@ -46,6 +49,11 @@ export interface Asset {
   hasBeneficiary: boolean;
   beneficiary: string;
   notes: string;
+  // Insurance-specific fields
+  insuranceKind: string;
+  insuredPerson: string;
+  paymentYears: string;
+  stillPaying: boolean;
 }
 
 export type TwoFactorMethod = "totp" | "sms" | "hardware_key" | "email" | "other";
@@ -62,6 +70,9 @@ export interface SealedEnvelope {
   label: string;
   location: string;
   linkedAssetIds: string[];
+  passwordHint: string;
+  twoFactorMethod: TwoFactorMethod | "none";
+  twoFactorRecovery: string;
   notes: string;
 }
 
@@ -93,8 +104,11 @@ export interface Document {
   meta: DocumentMeta;
   assets: Asset[];
   access: AccessInfo;
+  accessRemoved: boolean;
   sopStages: SopStage[];
+  sopRemoved: boolean;
   customSections: CustomSection[];
+  customRemoved: boolean;
 }
 
 export interface DraftEnvelope {
