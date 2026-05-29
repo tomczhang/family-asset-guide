@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { AppProvider, useAppState } from "./state/context";
+import { createMockDocument } from "./data/mock-data";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { Toolbar } from "./components/Toolbar";
 import { TableOfContents } from "./components/TableOfContents";
@@ -13,10 +14,12 @@ import { PasswordModal } from "./components/PasswordModal";
 import { generatePdf, downloadPdf } from "./pdf/generate";
 
 function AppContent() {
-  const { doc, openPasswordModal, setOpenPasswordModal } = useAppState();
+  const { doc, dispatch, openPasswordModal, setOpenPasswordModal } = useAppState();
+  const isEmpty = doc.assets.length === 0 && doc.access.seals.length === 0;
   const isMobile = useIsMobile();
   const [currentStep, setCurrentStep] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
 
   const steps: Array<{ Editor: () => JSX.Element | null; label: string; count: number }> = [
     { Editor: AssetEditor, label: "资产清单", count: doc.assets.length },
@@ -36,12 +39,15 @@ function AppContent() {
 
   const handleGenerate = useCallback(
     async (password: string) => {
+      setPdfGenerating(true);
       try {
         const bytes = await generatePdf(doc, password);
         downloadPdf(bytes);
         setOpenPasswordModal(false);
       } catch (err) {
         alert(`PDF 生成失败: ${err instanceof Error ? err.message : "未知错误"}`);
+      } finally {
+        setPdfGenerating(false);
       }
     },
     [doc, setOpenPasswordModal],
@@ -77,6 +83,32 @@ function AppContent() {
                   <li>⚡ 选机构 → 填账号、资产、密码保存地 → 一键生成，三步极简</li>
                   <li>⚠️ 所有数据仅存在于当前页面，关闭即丢失，请及时导出草稿</li>
                 </ul>
+              </div>
+            )}
+
+            {isEmpty && (
+              <div
+                className="card"
+                style={{
+                  textAlign: "center",
+                  padding: "var(--sp-8) var(--sp-4)",
+                  marginBottom: "var(--sp-6)",
+                  border: "1.5px dashed var(--amber-300)",
+                  background: "var(--amber-50)",
+                }}
+              >
+                <p style={{ fontSize: 15, fontWeight: 600, color: "var(--stone-700)", marginBottom: "var(--sp-2)" }}>
+                  还没有数据，先看看完整示例？
+                </p>
+                <p style={{ fontSize: 13, color: "var(--stone-500)", marginBottom: "var(--sp-4)" }}>
+                  点击下方按钮导入演示数据，快速预览应急手册的完整效果
+                </p>
+                <button
+                  className="btn btn-amber"
+                  onClick={() => dispatch({ type: "LOAD_DOCUMENT", document: createMockDocument() })}
+                >
+                  导入演示数据
+                </button>
               </div>
             )}
 
@@ -122,6 +154,7 @@ function AppContent() {
 
       <PasswordModal
         open={openPasswordModal}
+        generating={pdfGenerating}
         onClose={() => setOpenPasswordModal(false)}
         onConfirm={handleGenerate}
       />

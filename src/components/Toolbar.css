@@ -86,6 +86,22 @@
   color: #dc2626;
 }
 
+.toolbar-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--stone-600);
+  transition: all 0.15s;
+}
+
+.toolbar-menu-btn:active {
+  background: var(--stone-100);
+  color: var(--stone-900);
+}
+
 @media (max-width: 768px) {
   .toolbar {
     padding: 0 var(--sp-4);
