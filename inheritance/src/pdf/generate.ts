@@ -357,14 +357,6 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
   ctx.page.drawRectangle({ x: MARGIN, y: ctx.y, width: 170, height: 3, color: COLORS.amber700 });
   ctx.y -= 36;
 
-  if (doc.meta.familyName) {
-    ctx.page.drawText(`${doc.meta.familyName}家`, { x: MARGIN, y: ctx.y, size: 18, font, color: COLORS.muted });
-    ctx.y -= 32;
-  }
-  if (doc.meta.passwordHolderHint) {
-    ctx.page.drawText(`密码持有人：${doc.meta.passwordHolderHint}`, { x: MARGIN, y: ctx.y, size: 11, font, color: COLORS.body });
-    ctx.y -= 22;
-  }
   ctx.page.drawText(`生成日期：${new Date().toISOString().slice(0, 10)}`, { x: MARGIN, y: ctx.y, size: 10, font, color: COLORS.light });
   ctx.y -= 30;
 
@@ -482,7 +474,7 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
       });
       ctx.y = headerY - 4;
 
-      const sopLineH = 9.5 * 1.4;
+      const sopLineH = 9.5 * 1.6;
       for (const line of stage.content.split("\n")) {
         need(ctx, sopLineH);
         drawText(ctx, line, 9.5, COLORS.body, MARGIN + 12, sopLineH);
@@ -511,7 +503,7 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
 
   // ===== 页脚 =====
   const pages = pdf.getPages();
-  const footer = `家庭资产应急手册 · ${doc.meta.familyName || ""}家 · 机密文件`;
+  const footer = "家庭资产应急手册 · 机密文件";
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i]!;
     p.drawLine({

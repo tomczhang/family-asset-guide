@@ -34,7 +34,7 @@ export function PasswordModal({ open, onClose, onConfirm }: Props) {
   if (!open) return null;
 
   const strength = strengthLabel(password);
-  const valid = password.length >= 6 && charClasses(password) >= 3;
+  const valid = password.length >= 6;
   const confirmed = password === confirmPw && confirmPw.length > 0;
   const canSubmit = valid && confirmed;
 
@@ -52,7 +52,7 @@ export function PasswordModal({ open, onClose, onConfirm }: Props) {
         </div>
 
         <div className="field" style={{ marginBottom: "var(--sp-3)" }}>
-          <label className="field-label">密码（≥6 位，需包含 3 类以上字符）</label>
+          <label className="field-label">密码（≥6 位）</label>
           <input
             className="field-input"
             type="password"
