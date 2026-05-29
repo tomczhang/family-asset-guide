@@ -156,6 +156,8 @@ button {
   margin-bottom: var(--sp-3);
   border-radius: var(--radius-sm);
   transition: background-color 0.2s, border-color 0.2s;
+  overflow: hidden;
+  max-width: 100%;
 }
 
 .card:hover {
@@ -368,13 +370,26 @@ select.field-input {
   .app-main {
     padding-right: 0;
     padding-bottom: 72px;
+    overflow-x: hidden;
   }
 
   .app-main-inner {
     padding: var(--sp-4) var(--sp-4);
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .field-group {
     grid-template-columns: 1fr;
+  }
+
+  .card {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .field-input {
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }

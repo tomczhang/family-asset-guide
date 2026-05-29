@@ -381,19 +381,22 @@ const PREFERRED_FONTS = [
 ];
 
 async function loadSystemFont(): Promise<ArrayBuffer> {
-  if (!("queryLocalFonts" in window)) {
-    throw new Error("当前浏览器不支持读取系统字体（需要 Chrome 103+）。\n请使用 Chrome 或 Edge 浏览器。");
+  if ("queryLocalFonts" in window) {
+    try {
+      const fonts = await (window as any).queryLocalFonts();
+      for (const name of PREFERRED_FONTS) {
+        const match = fonts.find((f: any) => f.family === name && f.style === "Regular");
+        if (match) return (await match.blob()).arrayBuffer();
+      }
+      const fallback = fonts.find(
+        (f: any) => f.style === "Regular" && /sc|cn|gb|hei|song|fang/i.test(f.family),
+      );
+      if (fallback) return (await fallback.blob()).arrayBuffer();
+    } catch {}
   }
-  const fonts = await (window as any).queryLocalFonts();
-  for (const name of PREFERRED_FONTS) {
-    const match = fonts.find((f: any) => f.family === name && f.style === "Regular");
-    if (match) return (await match.blob()).arrayBuffer();
-  }
-  const fallback = fonts.find(
-    (f: any) => f.style === "Regular" && /sc|cn|gb|hei|song|fang/i.test(f.family),
-  );
-  if (fallback) return (await fallback.blob()).arrayBuffer();
-  throw new Error("未找到中文字体，请确保系统已安装中文字体。");
+  const resp = await fetch("NotoSansSC-Regular.otf");
+  if (resp.ok) return resp.arrayBuffer();
+  throw new Error("无法加载中文字体。请使用桌面版 Chrome/Edge 浏览器，或检查网络连接。");
 }
 
 // ===================== Main =====================
