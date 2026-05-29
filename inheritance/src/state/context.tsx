@@ -18,6 +18,7 @@ import {
 } from "./document";
 import { ConfirmDialog, type ConfirmOptions } from "../components/ConfirmDialog";
 import { extractDraftFromPdf } from "../pdf/generate";
+import { DEFAULT_SOP_STAGES } from "../data/sop-template";
 
 interface AppState {
   doc: Document;
@@ -104,6 +105,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const text = await file.text();
         const raw = JSON.parse(text);
         loaded = unwrapDraft(raw);
+      }
+      loaded.accessRemoved = false;
+      loaded.sopRemoved = false;
+      loaded.customRemoved = false;
+      if (loaded.sopStages.length === 0) {
+        loaded.sopStages = DEFAULT_SOP_STAGES();
       }
       dispatch({ type: "LOAD_DOCUMENT", document: loaded });
       setDraftStatus({ kind: "clean" });

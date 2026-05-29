@@ -78,10 +78,10 @@ function textBaseline(boxBottom: number, boxH: number, fontSize: number): number
   return boxBottom + (boxH - fontSize) / 2 + fontSize * 0.15;
 }
 
-function drawText(ctx: Ctx, text: string, size: number, color = COLORS.body, x = MARGIN): void {
+function drawText(ctx: Ctx, text: string, size: number, color = COLORS.body, x = MARGIN, lineHeight?: number): void {
   const maxW = PAGE_W - x - MARGIN;
   const lines = wrapText(text, ctx.font, size, maxW);
-  const lineH = size * 1.8;
+  const lineH = lineHeight ?? size * 1.8;
   for (const line of lines) {
     need(ctx, lineH);
     ctx.page.drawText(line, { x, y: ctx.y, size, font: ctx.font, color });
@@ -179,6 +179,106 @@ function drawCard(ctx: Ctx, num: string, rows: { label: string; value: string }[
         size: 9.5, font: ctx.font, color: COLORS.dark,
       });
       rowY -= rowH;
+    }
+  }
+
+  ctx.y = cardY - 6;
+}
+
+interface AssetRow {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  dividerBefore?: boolean;
+}
+
+function drawAssetCard(
+  ctx: Ctx, num: string, title: string, typeBadge: string, rows: AssetRow[],
+): void {
+  const titleH = 26;
+  const rowH = 18;
+  const highlightRowH = 22;
+  const padTop = 8;
+  const padBot = 8;
+  const divGap = 6;
+  const maxValW = CONTENT_W - 110;
+
+  const wrappedRows: { label: string; lines: string[]; highlight: boolean; dividerBefore: boolean; rh: number }[] = [];
+  let bodyH = padTop + padBot;
+
+  for (const { label, value, highlight, dividerBefore } of rows) {
+    const rh = highlight ? highlightRowH : rowH;
+    const fs = highlight ? 11 : 9.5;
+    const lines = wrapText(value || "—", ctx.font, fs, maxValW);
+    wrappedRows.push({ label, lines, highlight: !!highlight, dividerBefore: !!dividerBefore, rh });
+    if (dividerBefore) bodyH += divGap;
+    bodyH += Math.max(lines.length, 1) * rh;
+  }
+
+  const cardH = titleH + bodyH;
+  need(ctx, cardH + 4);
+  const cardY = ctx.y - cardH;
+
+  ctx.page.drawRectangle({
+    x: MARGIN, y: cardY, width: CONTENT_W, height: cardH,
+    borderColor: COLORS.border, borderWidth: 0.5, color: COLORS.white,
+  });
+
+  const titleBarY = cardY + bodyH;
+  ctx.page.drawRectangle({
+    x: MARGIN + 0.25, y: titleBarY, width: CONTENT_W - 0.5, height: titleH,
+    color: COLORS.amber100,
+  });
+
+  ctx.page.drawText(num, {
+    x: MARGIN + 10, y: textBaseline(titleBarY, titleH, 9),
+    size: 9, font: ctx.font, color: COLORS.amber700,
+  });
+  ctx.page.drawText(title, {
+    x: MARGIN + 30, y: textBaseline(titleBarY, titleH, 10.5),
+    size: 10.5, font: ctx.font, color: COLORS.amber700,
+  });
+
+  const badgeW = ctx.font.widthOfTextAtSize(typeBadge, 8) + 12;
+  const badgeH = 15;
+  const badgeX = MARGIN + CONTENT_W - badgeW - 8;
+  const badgeY = titleBarY + (titleH - badgeH) / 2;
+  ctx.page.drawRectangle({ x: badgeX, y: badgeY, width: badgeW, height: badgeH, color: COLORS.amber700 });
+  ctx.page.drawText(typeBadge, {
+    x: badgeX + 6, y: textBaseline(badgeY, badgeH, 8),
+    size: 8, font: ctx.font, color: COLORS.white,
+  });
+
+  ctx.page.drawLine({
+    start: { x: MARGIN, y: titleBarY }, end: { x: MARGIN + CONTENT_W, y: titleBarY },
+    thickness: 0.5, color: COLORS.border,
+  });
+
+  let rowY = titleBarY - padTop;
+  for (const { label, lines, highlight, dividerBefore, rh } of wrappedRows) {
+    if (dividerBefore) {
+      rowY -= divGap / 2;
+      ctx.page.drawLine({
+        start: { x: MARGIN + 10, y: rowY }, end: { x: MARGIN + CONTENT_W - 10, y: rowY },
+        thickness: 0.3, color: COLORS.border,
+      });
+      rowY -= divGap / 2;
+    }
+
+    const valueSize = highlight ? 11 : 9.5;
+    const valueColor = highlight ? COLORS.amber700 : COLORS.dark;
+    const labelColor = highlight ? COLORS.amber700 : COLORS.muted;
+
+    ctx.page.drawText(label, {
+      x: MARGIN + 12, y: textBaseline(rowY - rh, rh, 9),
+      size: 9, font: ctx.font, color: labelColor,
+    });
+    for (const l of lines) {
+      ctx.page.drawText(l, {
+        x: MARGIN + 104, y: textBaseline(rowY - rh, rh, valueSize),
+        size: valueSize, font: ctx.font, color: valueColor,
+      });
+      rowY -= rh;
     }
   }
 
@@ -300,16 +400,17 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
   for (let i = 0; i < doc.assets.length; i++) {
     const a = doc.assets[i]!;
     const isInsurance = a.type === "insurance";
-    drawCard(ctx, String(i + 1).padStart(2, "0"), [
-      { label: "资产类型", value: ASSET_TYPE_LABELS[a.type] },
-      { label: "机构名称", value: a.institution },
+    const institution = a.institution || ASSET_TYPE_LABELS[a.type];
+    const typeLabel = ASSET_TYPE_LABELS[a.type];
+
+    drawAssetCard(ctx, String(i + 1).padStart(2, "0"), institution, typeLabel, [
       ...(isInsurance ? [
         ...(a.insuranceKind ? [{ label: "险种", value: a.insuranceKind }] : []),
         { label: "保单号", value: a.accountNumber },
-        { label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}` },
         ...(a.insuredPerson ? [{ label: "保险人", value: a.insuredPerson }] : []),
         { label: "缴费年限", value: a.paymentYears || "—" },
         { label: "缴费状态", value: a.stillPaying ? "缴费中" : "已缴清" },
+        { label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true },
       ] : [
         { label: "账户号码", value: a.accountNumber },
         ...(a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
@@ -318,7 +419,7 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
         { label: "登录网址", value: a.loginUrl },
         { label: "联系电话", value: a.contactPhone },
         ...(a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
-        { label: "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}` },
+        { label: "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true },
       ]),
       { label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" },
       ...(a.notes ? [{ label: "备注", value: a.notes }] : []),
@@ -379,13 +480,14 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
         x: MARGIN + 10, y: textBaseline(headerY, headerH, 10.5),
         size: 10.5, font, color: COLORS.amber700,
       });
-      ctx.y = headerY - 8;
+      ctx.y = headerY - 4;
 
+      const sopLineH = 9.5 * 1.4;
       for (const line of stage.content.split("\n")) {
-        need(ctx, 17);
-        drawText(ctx, line, 9.5, COLORS.body, MARGIN + 12);
+        need(ctx, sopLineH);
+        drawText(ctx, line, 9.5, COLORS.body, MARGIN + 12, sopLineH);
       }
-      ctx.y -= 8;
+      ctx.y -= 6;
     }
   }
 
