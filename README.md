@@ -37,7 +37,6 @@
 ## 本地开发
 
 ```bash
-cd inheritance
 npm install
 npm run dev
 ```
@@ -47,11 +46,10 @@ npm run dev
 ## 构建
 
 ```bash
-cd inheritance
 npm run build
 ```
 
-产物在 `inheritance/dist/index.html`，是一个自包含的单 HTML 文件，可直接双击打开使用。
+产物在 `dist/index.html`，是一个自包含的单 HTML 文件，可直接双击打开使用。
 
 ## 安全说明
 
