@@ -43,7 +43,7 @@ function CollapsedCard({
           {asset.institution || "未选择机构"}
         </span>
         {asset.accountNumber && (
-          <span style={{ fontSize: 12, color: "var(--stone-400)", fontFamily: "var(--font-mono)" }}>
+          <span className="collapsed-acct" style={{ fontSize: 12, color: "var(--stone-400)", fontFamily: "var(--font-mono)" }}>
             {privacyMode ? mask(asset.accountNumber) : asset.accountNumber}
           </span>
         )}
@@ -140,7 +140,7 @@ export function AssetEditor() {
   const hasInsurance = doc.assets.some((a) => a.type === "insurance");
   const totalCNY = doc.assets.reduce((sum, a) => {
     if (a.type === "insurance") return sum;
-    const val = parseFloat(a.estimatedValue) || 0;
+    const val = parseFloat(a.estimatedValue.replace(/,/g, "")) || 0;
     const rate = CNY_RATES[a.currency] ?? 1;
     return sum + val * rate;
   }, 0);

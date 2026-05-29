@@ -408,4 +408,8 @@ select.field-input {
     max-width: 100%;
     box-sizing: border-box;
   }
+
+  .collapsed-acct {
+    display: none;
+  }
 }
