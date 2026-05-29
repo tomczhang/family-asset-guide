@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { useAppState } from "../state/context";
 import { draftStatusLabel } from "../state/document";
+import { createMockDocument } from "../data/mock-data";
 import "./Toolbar.css";
 
 export function Toolbar({ isMobile }: { isMobile: boolean }) {
-  const { draftStatus, exportDraft, importDraft, clearAll, privacyMode, setPrivacyMode } = useAppState();
+  const { dispatch, draftStatus, exportDraft, importDraft, clearAll, privacyMode, setPrivacyMode } = useAppState();
   const fileRef = useRef<HTMLInputElement>(null);
   const [showExportWarn, setShowExportWarn] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -105,6 +106,11 @@ export function Toolbar({ isMobile }: { isMobile: boolean }) {
               </button>
               {menuOpen && (
                 <div className="toolbar-dropdown" onClick={() => setMenuOpen(false)}>
+                  <button className="toolbar-dropdown-item" onClick={() => {
+                    dispatch({ type: "LOAD_DOCUMENT", document: createMockDocument() });
+                  }}>
+                    导入演示数据
+                  </button>
                   <button className="toolbar-dropdown-item" onClick={() => fileRef.current?.click()}>
                     导入草稿
                   </button>
@@ -119,6 +125,11 @@ export function Toolbar({ isMobile }: { isMobile: boolean }) {
             </div>
           ) : (
             <>
+              <button className="btn btn-amber btn-sm" onClick={() => {
+                dispatch({ type: "LOAD_DOCUMENT", document: createMockDocument() });
+              }}>
+                演示数据
+              </button>
               <button className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()}>
                 导入草稿
               </button>
