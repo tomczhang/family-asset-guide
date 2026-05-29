@@ -42,7 +42,7 @@ function AppContent() {
       setPdfGenerating(true);
       try {
         const bytes = await generatePdf(doc, password);
-        downloadPdf(bytes);
+        await downloadPdf(bytes);
         setOpenPasswordModal(false);
       } catch (err) {
         alert(`PDF 生成失败: ${err instanceof Error ? err.message : "未知错误"}`);

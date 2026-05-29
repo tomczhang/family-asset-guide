@@ -577,13 +577,23 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
   return await pdf.save();
 }
 
-export function downloadPdf(bytes: Uint8Array) {
+export async function downloadPdf(bytes: Uint8Array) {
+  const ts = new Date().toISOString().slice(0, 10);
+  const fileName = `家庭应急手册-${ts}.pdf`;
   const blob = new Blob([bytes], { type: "application/pdf" });
+
+  try {
+    const file = new File([blob], fileName, { type: "application/pdf" });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: fileName });
+      return;
+    }
+  } catch {}
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const ts = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `家庭应急手册-${ts}.pdf`;
+  a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
 }
