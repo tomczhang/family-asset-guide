@@ -285,6 +285,63 @@ function drawAssetCard(
   ctx.y = cardY - 6;
 }
 
+function drawSopCard(ctx: Ctx, num: string, title: string, content: string): void {
+  const titleH = 26;
+  const rowH = 18;
+  const padTop = 8;
+  const padBot = 8;
+  const contentX = MARGIN + 12;
+  const maxW = CONTENT_W - 24;
+
+  const allLines: string[] = [];
+  for (const raw of content.split("\n")) {
+    if (!raw.trim()) continue;
+    const wrapped = wrapText(raw, ctx.font, 9.5, maxW);
+    allLines.push(...wrapped);
+  }
+
+  const bodyH = padTop + allLines.length * rowH + padBot;
+  const cardH = titleH + bodyH;
+  need(ctx, cardH + 4);
+  const cardY = ctx.y - cardH;
+
+  ctx.page.drawRectangle({
+    x: MARGIN, y: cardY, width: CONTENT_W, height: cardH,
+    borderColor: COLORS.border, borderWidth: 0.5, color: COLORS.white,
+  });
+
+  const titleBarY = cardY + bodyH;
+  ctx.page.drawRectangle({
+    x: MARGIN + 0.25, y: titleBarY, width: CONTENT_W - 0.5, height: titleH,
+    color: COLORS.amber100,
+  });
+
+  ctx.page.drawText(num, {
+    x: MARGIN + 10, y: textBaseline(titleBarY, titleH, 9),
+    size: 9, font: ctx.font, color: COLORS.amber700,
+  });
+  ctx.page.drawText(title, {
+    x: MARGIN + 30, y: textBaseline(titleBarY, titleH, 10.5),
+    size: 10.5, font: ctx.font, color: COLORS.amber700,
+  });
+
+  ctx.page.drawLine({
+    start: { x: MARGIN, y: titleBarY }, end: { x: MARGIN + CONTENT_W, y: titleBarY },
+    thickness: 0.5, color: COLORS.border,
+  });
+
+  let rowY = titleBarY - padTop;
+  for (const line of allLines) {
+    ctx.page.drawText(line, {
+      x: contentX, y: textBaseline(rowY - rowH, rowH, 9.5),
+      size: 9.5, font: ctx.font, color: COLORS.dark,
+    });
+    rowY -= rowH;
+  }
+
+  ctx.y = cardY - 6;
+}
+
 function drawDivider(ctx: Ctx): void {
   ctx.y -= 4;
   ctx.page.drawLine({
@@ -460,26 +517,7 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
 
     for (let i = 0; i < doc.sopStages.length; i++) {
       const stage = doc.sopStages[i]!;
-      const headerH = 28;
-      need(ctx, headerH + 30);
-
-      const headerY = ctx.y - headerH;
-      ctx.page.drawRectangle({
-        x: MARGIN, y: headerY, width: CONTENT_W, height: headerH, color: COLORS.amber100,
-      });
-      const stageLabel = `${String(i + 1).padStart(2, "0")}  ${stage.title}`;
-      ctx.page.drawText(stageLabel, {
-        x: MARGIN + 10, y: textBaseline(headerY, headerH, 10.5),
-        size: 10.5, font, color: COLORS.amber700,
-      });
-      ctx.y = headerY - 4;
-
-      const sopLineH = 9.5 * 1.6;
-      for (const line of stage.content.split("\n")) {
-        need(ctx, sopLineH);
-        drawText(ctx, line, 9.5, COLORS.body, MARGIN + 12, sopLineH);
-      }
-      ctx.y -= 6;
+      drawSopCard(ctx, String(i + 1).padStart(2, "0"), stage.title, stage.content);
     }
   }
 
