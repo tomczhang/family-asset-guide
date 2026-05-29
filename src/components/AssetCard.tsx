@@ -36,10 +36,10 @@ function CollapsedCard({
     <div className="card" style={{ padding: "var(--sp-3) var(--sp-4)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
         <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
-        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--amber-700)", background: "var(--amber-100)", padding: "2px 6px" }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--amber-700)", background: "var(--amber-100)", padding: "2px 6px", minWidth: 42, textAlign: "center", flexShrink: 0 }}>
           {ASSET_TYPE_LABELS[asset.type]}
         </span>
-        <span style={{ fontSize: 13, color: "var(--stone-700)", fontWeight: 500 }}>
+        <span style={{ fontSize: 13, color: "var(--stone-700)", fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {asset.institution || "未选择机构"}
         </span>
         {asset.accountNumber && (
