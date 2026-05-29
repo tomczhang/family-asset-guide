@@ -20,6 +20,17 @@ function AppContent() {
   const [currentStep, setCurrentStep] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [showWechatTip, setShowWechatTip] = useState(false);
+
+  const isWechat = /MicroMessenger/i.test(navigator.userAgent);
+
+  const handleOpenPdfModal = () => {
+    if (isWechat) {
+      setShowWechatTip(true);
+    } else {
+      setOpenPasswordModal(true);
+    }
+  };
 
   const steps: Array<{ Editor: () => JSX.Element | null; label: string; count: number }> = [
     { Editor: AssetEditor, label: "资产清单", count: doc.assets.length },
@@ -138,7 +149,7 @@ function AppContent() {
             currentLabel={stepLabels[safeStep] ?? ""}
             onPrev={() => goToStep(safeStep - 1)}
             onNext={() => goToStep(safeStep + 1)}
-            onGenerate={() => setOpenPasswordModal(true)}
+            onGenerate={handleOpenPdfModal}
             onOpenToc={() => setTocOpen(true)}
           />
           <MobileTocOverlay
@@ -158,6 +169,35 @@ function AppContent() {
         onClose={() => setOpenPasswordModal(false)}
         onConfirm={handleGenerate}
       />
+
+      {showWechatTip && (
+        <div className="modal-overlay" onClick={() => setShowWechatTip(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">请在浏览器中打开</div>
+            <p style={{ color: "var(--stone-600)", fontSize: 13, lineHeight: 1.7 }}>
+              微信内置浏览器不支持生成 PDF 文件。请点击右上角
+              <strong> ··· </strong>菜单，选择<strong>「在浏览器中打开」</strong>，然后再生成 PDF。
+            </p>
+            <div style={{ marginTop: "var(--sp-4)" }}>
+              <button
+                className="btn btn-secondary"
+                style={{ width: "100%", justifyContent: "center" }}
+                onClick={() => {
+                  navigator.clipboard?.writeText(window.location.href);
+                  setShowWechatTip(false);
+                }}
+              >
+                复制页面链接
+              </button>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowWechatTip(false)}>
+                知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
