@@ -381,18 +381,19 @@ const PREFERRED_FONTS = [
 ];
 
 const FONT_CACHE = "font-cache-v1";
+const CDN_TTF = "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf";
 
-async function fetchWithCache(file: string): Promise<ArrayBuffer> {
+async function fetchWithCache(url: string): Promise<ArrayBuffer> {
   try {
     const cache = await caches.open(FONT_CACHE);
-    const cached = await cache.match(file);
+    const cached = await cache.match(url);
     if (cached) return cached.arrayBuffer();
-    const resp = await fetch(file);
+    const resp = await fetch(url);
     if (!resp.ok) throw new Error();
-    cache.put(file, resp.clone());
+    cache.put(url, resp.clone());
     return resp.arrayBuffer();
   } catch {
-    const resp = await fetch(file);
+    const resp = await fetch(url);
     if (resp.ok) return resp.arrayBuffer();
     throw new Error("无法加载字体文件。");
   }
@@ -412,7 +413,11 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
       if (fallback) return (await fallback.blob()).arrayBuffer();
     } catch {}
   }
-  return fetchWithCache("NotoSansSC-Regular.otf");
+  try {
+    return await fetchWithCache(CDN_TTF);
+  } catch {
+    return fetchWithCache("NotoSansSC-Regular.otf");
+  }
 }
 
 // ===================== Main =====================
@@ -429,8 +434,13 @@ export async function generatePdf(
     const fontBytes = await loadSystemFont();
     font = await pdf.embedFont(fontBytes, { subset: false });
   } catch {
-    onStatus?.("当前字体不兼容，正在下载备用字体（约 1 分钟）…");
-    const fallbackBytes = await fetchWithCache("NotoSansSC-Regular.ttf");
+    onStatus?.("当前字体不兼容，正在下载备用字体…");
+    let fallbackBytes: ArrayBuffer;
+    try {
+      fallbackBytes = await fetchWithCache(CDN_TTF);
+    } catch {
+      fallbackBytes = await fetchWithCache("NotoSansSC-Regular.ttf");
+    }
     font = await pdf.embedFont(fallbackBytes, { subset: false });
   }
   const ctx: Ctx = { pdf, font, page: pdf.addPage([PAGE_W, PAGE_H]), y: PAGE_H - MARGIN };
