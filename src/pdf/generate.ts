@@ -394,9 +394,15 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
       if (fallback) return (await fallback.blob()).arrayBuffer();
     } catch {}
   }
-  const resp = await fetch("NotoSansSC-Regular.otf");
+  const resp = await fetch("NotoSansSC-Regular.ttf");
   if (resp.ok) return resp.arrayBuffer();
   throw new Error("无法加载中文字体。请使用桌面版 Chrome/Edge 浏览器，或检查网络连接。");
+}
+
+async function loadFallbackFont(): Promise<ArrayBuffer> {
+  const resp = await fetch("NotoSansSC-Regular.ttf");
+  if (resp.ok) return resp.arrayBuffer();
+  throw new Error("无法加载备用字体。");
 }
 
 // ===================== Main =====================
@@ -404,8 +410,14 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
 export async function generatePdf(doc: Document, password: string): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
-  const fontBytes = await loadSystemFont();
-  const font = await pdf.embedFont(fontBytes, { subset: false });
+  let font: PDFFont;
+  try {
+    const fontBytes = await loadSystemFont();
+    font = await pdf.embedFont(fontBytes, { subset: false });
+  } catch {
+    const fallbackBytes = await loadFallbackFont();
+    font = await pdf.embedFont(fallbackBytes, { subset: false });
+  }
   const ctx: Ctx = { pdf, font, page: pdf.addPage([PAGE_W, PAGE_H]), y: PAGE_H - MARGIN };
 
   // ===== 封面 =====
