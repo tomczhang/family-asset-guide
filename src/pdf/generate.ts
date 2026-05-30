@@ -380,6 +380,25 @@ const PREFERRED_FONTS = [
   "Noto Sans CJK SC", "Noto Sans SC", "STHeiti", "SimHei",
 ];
 
+const FONT_FILE = "NotoSansSC-Regular.ttf";
+const FONT_CACHE = "font-cache-v1";
+
+async function fetchFontWithCache(): Promise<ArrayBuffer> {
+  try {
+    const cache = await caches.open(FONT_CACHE);
+    const cached = await cache.match(FONT_FILE);
+    if (cached) return cached.arrayBuffer();
+    const resp = await fetch(FONT_FILE);
+    if (!resp.ok) throw new Error();
+    cache.put(FONT_FILE, resp.clone());
+    return resp.arrayBuffer();
+  } catch {
+    const resp = await fetch(FONT_FILE);
+    if (resp.ok) return resp.arrayBuffer();
+    throw new Error("无法加载中文字体。请检查网络连接后重试。");
+  }
+}
+
 async function loadSystemFont(): Promise<ArrayBuffer> {
   if ("queryLocalFonts" in window) {
     try {
@@ -394,15 +413,7 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
       if (fallback) return (await fallback.blob()).arrayBuffer();
     } catch {}
   }
-  const resp = await fetch("NotoSansSC-Regular.ttf");
-  if (resp.ok) return resp.arrayBuffer();
-  throw new Error("无法加载中文字体。请使用桌面版 Chrome/Edge 浏览器，或检查网络连接。");
-}
-
-async function loadFallbackFont(): Promise<ArrayBuffer> {
-  const resp = await fetch("NotoSansSC-Regular.ttf");
-  if (resp.ok) return resp.arrayBuffer();
-  throw new Error("无法加载备用字体。");
+  return fetchFontWithCache();
 }
 
 // ===================== Main =====================
@@ -415,7 +426,7 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
     const fontBytes = await loadSystemFont();
     font = await pdf.embedFont(fontBytes, { subset: false });
   } catch {
-    const fallbackBytes = await loadFallbackFont();
+    const fallbackBytes = await fetchFontWithCache();
     font = await pdf.embedFont(fallbackBytes, { subset: false });
   }
   const ctx: Ctx = { pdf, font, page: pdf.addPage([PAGE_W, PAGE_H]), y: PAGE_H - MARGIN };
