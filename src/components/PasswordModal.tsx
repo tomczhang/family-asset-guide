@@ -4,6 +4,7 @@ import "./PasswordModal.css";
 interface Props {
   open: boolean;
   generating: boolean;
+  statusMessage: string;
   onClose: () => void;
   onConfirm: (password: string) => void;
 }
@@ -15,7 +16,7 @@ function strengthLabel(pw: string): { text: string; color: string } {
   return { text: "强", color: "#16a34a" };
 }
 
-export function PasswordModal({ open, generating, onClose, onConfirm }: Props) {
+export function PasswordModal({ open, generating, statusMessage, onClose, onConfirm }: Props) {
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
 
@@ -39,7 +40,7 @@ export function PasswordModal({ open, generating, onClose, onConfirm }: Props) {
           <div style={{ textAlign: "center", padding: "var(--sp-6) 0" }}>
             <div className="spinner" />
             <p style={{ color: "var(--stone-500)", fontSize: 13, marginTop: "var(--sp-4)" }}>
-              正在加载字体并生成加密 PDF，请稍候…
+              {statusMessage || "正在加载字体并生成加密 PDF，请稍候…"}
             </p>
           </div>
         ) : (

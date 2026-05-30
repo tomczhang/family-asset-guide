@@ -20,6 +20,7 @@ function AppContent() {
   const [currentStep, setCurrentStep] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
   const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState("");
   const [showWechatTip, setShowWechatTip] = useState(false);
 
   const isWechat = /MicroMessenger/i.test(navigator.userAgent);
@@ -51,14 +52,16 @@ function AppContent() {
   const handleGenerate = useCallback(
     async (password: string) => {
       setPdfGenerating(true);
+      setPdfStatus("");
       try {
-        const bytes = await generatePdf(doc, password);
+        const bytes = await generatePdf(doc, password, setPdfStatus);
         await downloadPdf(bytes);
         setOpenPasswordModal(false);
       } catch (err) {
         alert(`PDF 生成失败: ${err instanceof Error ? err.message : "未知错误"}`);
       } finally {
         setPdfGenerating(false);
+        setPdfStatus("");
       }
     },
     [doc, setOpenPasswordModal],
@@ -166,6 +169,7 @@ function AppContent() {
       <PasswordModal
         open={openPasswordModal}
         generating={pdfGenerating}
+        statusMessage={pdfStatus}
         onClose={() => setOpenPasswordModal(false)}
         onConfirm={handleGenerate}
       />

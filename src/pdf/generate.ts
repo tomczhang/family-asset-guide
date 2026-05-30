@@ -380,22 +380,21 @@ const PREFERRED_FONTS = [
   "Noto Sans CJK SC", "Noto Sans SC", "STHeiti", "SimHei",
 ];
 
-const FONT_FILE = "NotoSansSC-Regular.ttf";
 const FONT_CACHE = "font-cache-v1";
 
-async function fetchFontWithCache(): Promise<ArrayBuffer> {
+async function fetchWithCache(file: string): Promise<ArrayBuffer> {
   try {
     const cache = await caches.open(FONT_CACHE);
-    const cached = await cache.match(FONT_FILE);
+    const cached = await cache.match(file);
     if (cached) return cached.arrayBuffer();
-    const resp = await fetch(FONT_FILE);
+    const resp = await fetch(file);
     if (!resp.ok) throw new Error();
-    cache.put(FONT_FILE, resp.clone());
+    cache.put(file, resp.clone());
     return resp.arrayBuffer();
   } catch {
-    const resp = await fetch(FONT_FILE);
+    const resp = await fetch(file);
     if (resp.ok) return resp.arrayBuffer();
-    throw new Error("无法加载中文字体。请检查网络连接后重试。");
+    throw new Error("无法加载字体文件。");
   }
 }
 
@@ -413,12 +412,16 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
       if (fallback) return (await fallback.blob()).arrayBuffer();
     } catch {}
   }
-  return fetchFontWithCache();
+  return fetchWithCache("NotoSansSC-Regular.otf");
 }
 
 // ===================== Main =====================
 
-export async function generatePdf(doc: Document, password: string): Promise<Uint8Array> {
+export async function generatePdf(
+  doc: Document,
+  password: string,
+  onStatus?: (msg: string) => void,
+): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   let font: PDFFont;
@@ -426,7 +429,8 @@ export async function generatePdf(doc: Document, password: string): Promise<Uint
     const fontBytes = await loadSystemFont();
     font = await pdf.embedFont(fontBytes, { subset: false });
   } catch {
-    const fallbackBytes = await fetchFontWithCache();
+    onStatus?.("当前字体不兼容，正在下载备用字体（约 1 分钟）…");
+    const fallbackBytes = await fetchWithCache("NotoSansSC-Regular.ttf");
     font = await pdf.embedFont(fallbackBytes, { subset: false });
   }
   const ctx: Ctx = { pdf, font, page: pdf.addPage([PAGE_W, PAGE_H]), y: PAGE_H - MARGIN };
