@@ -51,8 +51,6 @@ export interface Asset {
   estimatedValue: string;
   cashValue: string;
   companyGrantedStockValue: string;
-  companyGrantedCashValue: string;
-  companyGrantedCashCurrency: Currency;
   assetDetail: string;
   accountOwner: string;
   currency: Currency;

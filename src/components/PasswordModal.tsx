@@ -67,7 +67,7 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
                 onClick={() => setMode("relative")}
               >
                 <span className="pdf-mode-title">亲属版</span>
-                <span className="pdf-mode-desc">账户信息 + 资产比例；不含具体金额、密码指引和草稿附件。</span>
+                <span className="pdf-mode-desc">资产清单 + 总额与占比 + 紧急流程；不含每笔金额、登录凭证、密码指引和草稿。</span>
               </button>
               <button
                 type="button"

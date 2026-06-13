@@ -841,36 +841,6 @@ export function AssetEditor() {
                           />
                         </div>
                       </div>
-                      <div className="field-group">
-                        <div className="field">
-                          <label className="field-label">公司授予现金</label>
-                          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-                            <select
-                              className="field-input"
-                              style={{ width: 80 }}
-                              value={asset.companyGrantedCashCurrency}
-                              onChange={(e) =>
-                                dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { companyGrantedCashCurrency: e.target.value as Currency } })
-                              }
-                            >
-                              {Object.entries(CURRENCY_LABELS).map(([k, v]) => (
-                                <option key={k} value={k}>{v}</option>
-                              ))}
-                            </select>
-                            <input
-                              className="field-input"
-                              style={{ flex: 1 }}
-                              placeholder="授予股票相关现金"
-                              value={asset.companyGrantedCashValue}
-                              onChange={(e) =>
-                                dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { companyGrantedCashValue: e.target.value } })
-                              }
-                              autoComplete="off"
-                              data-lpignore="true"
-                            />
-                          </div>
-                        </div>
-                      </div>
                     </>
                   )}
                   <div className="field-group">

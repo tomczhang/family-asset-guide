@@ -3,7 +3,7 @@ import fontkit from "@pdf-lib/fontkit";
 import type { Asset, Document } from "../state/types";
 import { ASSET_TYPE_LABELS, CURRENCY_LABELS } from "../state/types";
 import { wrapDraft, unwrapDraft } from "../state/document";
-import { formatCny, groupAssetsByFilter, summarizeAssets } from "../state/asset-summary";
+import { formatCny, formatCoarseCny, groupAssetsByFilter, summarizeAssets } from "../state/asset-summary";
 import type { ChartItem } from "../state/asset-summary";
 
 export const DRAFT_ATTACHMENT_NAME = "family-asset-guide-draft.json";
@@ -11,6 +11,40 @@ export type PdfOutputMode = "relative" | "full";
 
 interface GeneratePdfOptions {
   mode?: PdfOutputMode;
+}
+
+// 不同版本能展示哪些信息。夫妻版（full）给全；亲属版（relative）给"知情 + 执行"
+// 所需的信息，但隐去每笔金额、登录凭证、密码指引与可导入草稿。
+interface VersionCaps {
+  itemAmounts: boolean; // 每笔资产的估值/理赔额/欠款余额/账户现金/授予股票
+  totalAndCharts: boolean; // 总额 + 占比 + 概览饼图
+  beneficiary: boolean; // 受益人
+  accountNumber: boolean; // 账号/保单号
+  contactInfo: boolean; // 登录网址 / 客服电话 / APP 下载
+  loginCredentials: boolean; // 登录用户名 / 注册邮箱 / 绑定手机
+  notes: boolean; // 备注
+  passwordGuide: boolean; // 密码指引章节
+  sop: boolean; // 紧急响应流程
+  custom: boolean; // 自定义章节
+  toc: boolean; // 目录
+  embedDraft: boolean; // 内嵌可导入草稿
+}
+
+function capsForMode(mode: PdfOutputMode): VersionCaps {
+  if (mode === "full") {
+    return {
+      itemAmounts: true, totalAndCharts: true, beneficiary: true, accountNumber: true,
+      contactInfo: true, loginCredentials: true, notes: true, passwordGuide: true,
+      sop: true, custom: true, toc: true, embedDraft: true,
+    };
+  }
+  // relative（亲属版）：只让亲属知道有哪些资产、账号与机构联系方式；
+  // 不含每笔金额、分布饼图、登录凭证、密码指引与可导入草稿。
+  return {
+    itemAmounts: false, totalAndCharts: false, beneficiary: true, accountNumber: true,
+    contactInfo: true, loginCredentials: false, notes: false, passwordGuide: false,
+    sop: true, custom: true, toc: true, embedDraft: false,
+  };
 }
 
 // 从（加密的）PDF 中提取此前嵌入的草稿数据，用于直接导入 PDF 继续编辑。
@@ -359,62 +393,80 @@ function drawDivider(ctx: Ctx): void {
   ctx.y -= 8;
 }
 
-function colorFromHex(hex: string): ReturnType<typeof rgb> {
-  const clean = hex.replace("#", "");
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-  return rgb(r, g, b);
-}
-
-function polarPoint(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
-  const rad = (angleDeg - 90) * Math.PI / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-function donutSegmentPath(cx: number, cy: number, outerR: number, innerR: number, startDeg: number, endDeg: number): string {
-  const span = Math.max(endDeg - startDeg, 0);
-  const steps = Math.max(2, Math.ceil(span / 6));
-  const outerPoints = Array.from({ length: steps + 1 }, (_, i) => polarPoint(cx, cy, outerR, startDeg + (span * i) / steps));
-  const innerPoints = Array.from({ length: steps + 1 }, (_, i) => polarPoint(cx, cy, innerR, endDeg - (span * i) / steps));
-  const [first, ...rest] = [...outerPoints, ...innerPoints];
-  if (!first) return "";
-  return [
-    `M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`,
-    ...rest.map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
-    "Z",
-  ].join(" ");
-}
-
-function drawDonut(ctx: Ctx, items: ChartItem[], cx: number, cy: number, outerR: number, innerR: number): void {
+// 用 canvas 把环形图渲染成 PNG 再嵌入 PDF。此前用 page.drawSvgPath 画扇区，
+// 因 pdf-lib 对 SVG path 的坐标系处理（y 向下、锚点在左上）导致扇区被画到页面外、
+// 圆环空白。改成栅格图后任何 PDF 阅读器都能正常显示。
+async function renderDonutPng(
+  pdf: PDFDocument,
+  items: ChartItem[],
+  centerTop: string,
+  centerMain: string,
+  displaySize: number,
+): Promise<{ image: Awaited<ReturnType<PDFDocument["embedPng"]>>; size: number }> {
+  const scale = 3;
+  const size = displaySize * scale;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const c = canvas.getContext("2d")!;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size * 0.47;
+  const innerR = size * 0.27;
   const total = items.reduce((sum, item) => sum + item.value, 0);
+
   if (total <= 0) {
-    ctx.page.drawCircle({ x: cx, y: cy, size: outerR, color: COLORS.border });
-    ctx.page.drawCircle({ x: cx, y: cy, size: innerR, color: COLORS.white });
-    return;
-  }
-
-  let cursor = 0;
-  for (const item of items) {
-    if (item.value <= 0) continue;
-    const next = cursor + (item.value / total) * 360;
-    if (next - cursor >= 359.9) {
-      ctx.page.drawCircle({ x: cx, y: cy, size: outerR, color: colorFromHex(item.color) });
-    } else {
-      ctx.page.drawSvgPath(donutSegmentPath(cx, cy, outerR, innerR, cursor, next), {
-        color: colorFromHex(item.color),
-      });
+    c.beginPath();
+    c.arc(cx, cy, outerR, 0, Math.PI * 2);
+    c.fillStyle = "#e7e5e4";
+    c.fill();
+  } else {
+    let start = -Math.PI / 2;
+    for (const item of items) {
+      if (item.value <= 0) continue;
+      const angle = (item.value / total) * Math.PI * 2;
+      c.beginPath();
+      c.moveTo(cx, cy);
+      c.arc(cx, cy, outerR, start, start + angle);
+      c.closePath();
+      c.fillStyle = item.color;
+      c.fill();
+      start += angle;
     }
-    cursor = next;
   }
-  ctx.page.drawCircle({ x: cx, y: cy, size: innerR, color: COLORS.white });
+
+  // 中心挖白形成环形
+  c.beginPath();
+  c.arc(cx, cy, innerR, 0, Math.PI * 2);
+  c.fillStyle = "#ffffff";
+  c.fill();
+
+  // 中心文字（"合计" + 总额）。主文字按内圆直径自适应缩放，避免长数字撑爆内圆。
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.fillStyle = "#a8a29e";
+  c.font = `${9 * scale}px sans-serif`;
+  c.fillText(centerTop, cx, cy - 8 * scale);
+
+  const maxMainW = innerR * 1.7;
+  let mainPx = 13 * scale;
+  c.font = `bold ${mainPx}px sans-serif`;
+  while (c.measureText(centerMain).width > maxMainW && mainPx > 7 * scale) {
+    mainPx -= scale;
+    c.font = `bold ${mainPx}px sans-serif`;
+  }
+  c.fillStyle = "#1c1917";
+  c.fillText(centerMain, cx, cy + 8 * scale);
+
+  const blob: Blob = await new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("canvas toBlob 失败"))), "image/png"),
+  );
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const image = await pdf.embedPng(bytes);
+  return { image, size: displaySize };
 }
 
-function amountText(value: number, showAmounts: boolean): string {
-  return showAmounts ? formatCny(value) : "¥***";
-}
-
-function drawChartSummary(ctx: Ctx, doc: Document, showAmounts: boolean): void {
+function drawChartSummary(ctx: Ctx, doc: Document, caps: VersionCaps): void {
   const summary = summarizeAssets(doc.assets);
   const summaryH = 48;
   need(ctx, summaryH + 8);
@@ -423,7 +475,8 @@ function drawChartSummary(ctx: Ctx, doc: Document, showAmounts: boolean): void {
     x: MARGIN, y, width: CONTENT_W, height: summaryH,
     color: COLORS.amberBg, borderColor: COLORS.amberBorder, borderWidth: 0.5,
   });
-  ctx.page.drawText(`资产池总计 ${amountText(summary.totalCny, showAmounts)}`, {
+  const totalText = caps.itemAmounts ? formatCny(summary.totalCny) : formatCoarseCny(summary.totalCny);
+  ctx.page.drawText(`资产池总计 ${totalText}`, {
     x: MARGIN + 12, y: y + 27, size: 13, font: ctx.font, color: COLORS.black,
   });
   const tags = [
@@ -436,9 +489,9 @@ function drawChartSummary(ctx: Ctx, doc: Document, showAmounts: boolean): void {
     });
   }
   ctx.page.drawText(
-    showAmounts
+    caps.itemAmounts
       ? "只统计股票账户现金、银行存款、股票/基金和不动产；其他资产保留在清单明细中。"
-      : "亲属版仅展示账户信息和资产占比，不包含具体金额、密码指引或可导入草稿。",
+      : "亲属版展示资产总额与分布占比及紧急响应流程；不含每笔金额、登录凭证与密码指引。",
     {
     x: MARGIN + 12, y: y + 11, size: 8.5, font: ctx.font, color: COLORS.muted,
     },
@@ -446,13 +499,17 @@ function drawChartSummary(ctx: Ctx, doc: Document, showAmounts: boolean): void {
   ctx.y = y - 8;
 }
 
-function drawOverviewChart(ctx: Ctx, title: string, subtitle: string, items: ChartItem[], showAmounts: boolean): void {
+async function drawOverviewChart(
+  ctx: Ctx, title: string, subtitle: string, items: ChartItem[], caps: VersionCaps,
+): Promise<void> {
   const rowGap = 28;
-  const cardH = Math.max(142, 84 + items.length * rowGap);
+  const pieDisplay = 108;
+  const headH = 46; // 标题 + 副标题占用
+  const legendH = items.length * rowGap;
+  const bodyH = Math.max(pieDisplay, legendH);
+  const cardH = headH + bodyH + 8; // 8 为底部 padding，避免大片空白
   need(ctx, cardH + 8);
   const cardY = ctx.y - cardH;
-  const pieCx = MARGIN + 64;
-  const pieCy = cardY + Math.min(72, cardH / 2);
   const total = items.reduce((sum, item) => sum + item.value, 0);
 
   ctx.page.drawRectangle({
@@ -466,26 +523,24 @@ function drawOverviewChart(ctx: Ctx, title: string, subtitle: string, items: Cha
     x: MARGIN + 12, y: cardY + cardH - 40, size: 8.5, font: ctx.font, color: COLORS.muted,
   });
 
-  drawDonut(ctx, items, pieCx, pieCy, 42, 21);
-  const totalText = amountText(total, showAmounts);
-  ctx.page.drawText("合计", {
-    x: pieCx - ctx.font.widthOfTextAtSize("合计", 7.5) / 2,
-    y: pieCy + 5,
-    size: 7.5, font: ctx.font, color: COLORS.light,
-  });
-  ctx.page.drawText(totalText, {
-    x: pieCx - ctx.font.widthOfTextAtSize(totalText, 8.5) / 2,
-    y: pieCy - 8,
-    size: 8.5, font: ctx.font, color: COLORS.black,
-  });
+  // body 区上沿；饼图与图例都在 body 区内垂直居中。
+  const bodyTop = cardY + cardH - headH;
+  // 总额始终展示（两版都给量级认知）；亲属版用粗粒度，每笔金额按 caps 控制。
+  const totalText = caps.itemAmounts ? formatCny(total) : formatCoarseCny(total);
+  const { image } = await renderDonutPng(ctx.pdf, items, "合计", totalText, pieDisplay);
+  const pieX = MARGIN + 18;
+  const pieY = bodyTop - bodyH + (bodyH - pieDisplay) / 2;
+  ctx.page.drawImage(image, { x: pieX, y: pieY, width: pieDisplay, height: pieDisplay });
 
-  let rowY = cardY + cardH - 60;
-  const legendX = MARGIN + 140;
+  const legendX = MARGIN + 150;
   const valueX = MARGIN + CONTENT_W - 12;
+  let rowY = bodyTop - (bodyH - legendH) / 2 - 16;
   for (const item of items) {
     const pct = total > 0 ? (item.value / total) * 100 : 0;
-    const value = `${amountText(item.value, showAmounts)} · ${pct.toFixed(1)}%`;
-    ctx.page.drawCircle({ x: legendX, y: rowY + 2, size: 4, color: colorFromHex(item.color) });
+    const value = caps.itemAmounts
+      ? `${formatCny(item.value)} · ${pct.toFixed(1)}%`
+      : `${pct.toFixed(1)}%`;
+    ctx.page.drawCircle({ x: legendX, y: rowY + 2, size: 4, color: rgbFromHex(item.color) });
     ctx.page.drawText(item.label, { x: legendX + 10, y: rowY, size: 9.5, font: ctx.font, color: COLORS.dark });
     ctx.page.drawText(value, {
       x: valueX - ctx.font.widthOfTextAtSize(value, 9.5),
@@ -493,7 +548,7 @@ function drawOverviewChart(ctx: Ctx, title: string, subtitle: string, items: Cha
       size: 9.5, font: ctx.font, color: COLORS.black,
     });
     ctx.page.drawText(item.description, {
-      x: legendX + 10, y: rowY - 13, size: 7.5, font: ctx.font, color: COLORS.light,
+      x: legendX + 10, y: rowY - 12, size: 7.5, font: ctx.font, color: COLORS.light,
     });
     rowY -= rowGap;
   }
@@ -501,33 +556,41 @@ function drawOverviewChart(ctx: Ctx, title: string, subtitle: string, items: Cha
   ctx.y = cardY - 8;
 }
 
-function drawAssetOverview(ctx: Ctx, doc: Document, showAmounts: boolean): void {
+function rgbFromHex(hex: string): ReturnType<typeof rgb> {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return rgb(r, g, b);
+}
+
+async function drawAssetOverview(ctx: Ctx, doc: Document, caps: VersionCaps): Promise<void> {
   const summary = summarizeAssets(doc.assets);
-  drawChartSummary(ctx, doc, showAmounts);
-  drawOverviewChart(
+  drawChartSummary(ctx, doc, caps);
+  await drawOverviewChart(
     ctx,
     "资产分布概览",
     "只统计股票账户现金、银行存款、股票和不动产；欠款只提醒，不进入总额。",
     summary.allocationItems,
-    showAmounts,
+    caps,
   );
-  drawOverviewChart(
+  await drawOverviewChart(
     ctx,
     "中美资产分布",
     "美股和港股账户归海外资产，其他资产归中国资产。",
     summary.regionItems,
-    showAmounts,
+    caps,
   );
-  drawOverviewChart(
+  await drawOverviewChart(
     ctx,
     "股票账户来源拆分",
-    "区分公司授予股票/现金与自购股票，基金不纳入这张来源图。",
+    "区分公司授予股票与自购股票，基金不纳入这张来源图。",
     summary.stockSourceItems,
-    showAmounts,
+    caps,
   );
 }
 
-function buildAssetRows(a: Asset, showAmounts: boolean): AssetRow[] {
+function buildAssetRows(a: Asset, caps: VersionCaps): AssetRow[] {
   const isInsurance = a.type === "insurance";
   const isStockAccount = a.type === "us_stock" || a.type === "hk_stock" || a.type === "a_stock";
   const isDebt = a.type === "debt";
@@ -535,27 +598,26 @@ function buildAssetRows(a: Asset, showAmounts: boolean): AssetRow[] {
   return [
     ...(isInsurance ? [
       ...(a.insuranceKind ? [{ label: "险种", value: a.insuranceKind }] : []),
-      { label: "保单号", value: a.accountNumber },
+      ...(caps.accountNumber ? [{ label: "保单号", value: a.accountNumber }] : []),
       ...(a.insuredPerson ? [{ label: "被保人", value: a.insuredPerson }] : []),
       { label: "缴费年限", value: a.paymentYears || "—" },
       { label: "缴费状态", value: a.stillPaying ? "缴费中" : "已缴清" },
-      ...(showAmounts ? [{ label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
+      ...(caps.itemAmounts ? [{ label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
     ] : [
-      { label: isDebt ? "合同/贷款编号" : "账户号码", value: a.accountNumber },
+      ...(caps.accountNumber ? [{ label: isDebt ? "合同/贷款编号" : "账户号码", value: a.accountNumber }] : []),
       ...(a.accountOwner ? [{ label: "账户所有人", value: a.accountOwner }] : []),
-      ...(a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
-      ...(a.registerEmail ? [{ label: "注册邮箱", value: a.registerEmail }] : []),
-      ...(a.bindPhone ? [{ label: "绑定手机", value: a.bindPhone }] : []),
-      { label: "登录网址", value: a.loginUrl },
-      { label: "联系电话", value: a.contactPhone },
-      ...(a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
-      ...(showAmounts && isStockAccount && a.cashValue ? [{ label: "账户现金", value: `${CURRENCY_LABELS[a.currency]} ${a.cashValue}` }] : []),
-      ...(showAmounts && isStockAccount && a.companyGrantedStockValue ? [{ label: "公司授予股票", value: `${CURRENCY_LABELS[a.currency]} ${a.companyGrantedStockValue}` }] : []),
-      ...(showAmounts && isStockAccount && a.companyGrantedCashValue ? [{ label: "公司授予现金", value: `${CURRENCY_LABELS[a.companyGrantedCashCurrency]} ${a.companyGrantedCashValue}` }] : []),
-      ...(showAmounts ? [{ label: isDebt ? "欠款余额" : isStockAccount ? "账户总估值" : "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
+      ...(caps.loginCredentials && a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
+      ...(caps.loginCredentials && a.registerEmail ? [{ label: "注册邮箱", value: a.registerEmail }] : []),
+      ...(caps.loginCredentials && a.bindPhone ? [{ label: "绑定手机", value: a.bindPhone }] : []),
+      ...(caps.contactInfo ? [{ label: "登录网址", value: a.loginUrl }] : []),
+      ...(caps.contactInfo ? [{ label: "联系电话", value: a.contactPhone }] : []),
+      ...(caps.contactInfo && a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
+      ...(caps.itemAmounts && isStockAccount && a.cashValue ? [{ label: "账户现金", value: `${CURRENCY_LABELS[a.currency]} ${a.cashValue}` }] : []),
+      ...(caps.itemAmounts && isStockAccount && a.companyGrantedStockValue ? [{ label: "公司授予股票", value: `${CURRENCY_LABELS[a.currency]} ${a.companyGrantedStockValue}` }] : []),
+      ...(caps.itemAmounts ? [{ label: isDebt ? "欠款余额" : isStockAccount ? "账户总估值" : "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
     ]),
-    ...(showAmounts ? [{ label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" }] : []),
-    ...(showAmounts && a.notes ? [{ label: "备注", value: a.notes }] : []),
+    ...(caps.beneficiary ? [{ label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" }] : []),
+    ...(caps.notes && a.notes ? [{ label: "备注", value: a.notes }] : []),
   ];
 }
 
@@ -583,139 +645,104 @@ function drawAssetGroupHeader(ctx: Ctx, label: string, count: number): void {
   ctx.y = y - 6;
 }
 
-function accountLocator(asset: Asset): string {
-  return asset.accountNumber || asset.loginUsername || asset.registerEmail || asset.bindPhone || "—";
-}
-
-function assetDetailText(asset: Asset): string {
-  if (asset.type === "insurance" && asset.insuranceKind) return asset.insuranceKind;
-  if (asset.assetDetail) return asset.assetDetail;
-  return "";
-}
-
-function accountOwnerText(asset: Asset): string {
-  if (asset.type === "insurance" && asset.insuredPerson) return asset.insuredPerson;
-  return asset.accountOwner || "未填写所有人";
-}
-
-function fitText(ctx: Ctx, text: string, size: number, maxW: number): string {
-  if (ctx.font.widthOfTextAtSize(text, size) <= maxW) return text;
-  const suffix = "...";
-  let result = "";
-  for (const ch of text) {
-    const next = result + ch;
-    if (ctx.font.widthOfTextAtSize(next + suffix, size) > maxW) break;
-    result = next;
+// 预估一张资产卡片的高度（与 drawAssetCard 的算法保持一致），用于分页前的空间判断。
+function measureAssetCardHeight(ctx: Ctx, rows: AssetRow[]): number {
+  const titleH = 26;
+  const rowH = 18;
+  const highlightRowH = 22;
+  const padTop = 8;
+  const padBot = 8;
+  const divGap = 6;
+  const maxValW = CONTENT_W - 110;
+  let bodyH = padTop + padBot;
+  for (const { value, highlight, dividerBefore } of rows) {
+    const rh = highlight ? highlightRowH : rowH;
+    const fs = highlight ? 11 : 9.5;
+    const lines = wrapText(value || "—", ctx.font, fs, maxValW);
+    if (dividerBefore) bodyH += divGap;
+    bodyH += Math.max(lines.length, 1) * rh;
   }
-  return result ? result + suffix : suffix;
+  return titleH + bodyH;
 }
 
-function drawRelativeAssetRow(ctx: Ctx, num: string, asset: Asset): void {
-  const rowH = 46;
-  need(ctx, rowH + 5);
-  const y = ctx.y - rowH;
-  const typeLabel = ASSET_TYPE_LABELS[asset.type];
-  const detail = assetDetailText(asset);
-  const owner = accountOwnerText(asset);
-  const contentX = MARGIN + 40;
-  const typeBoxW = 58;
-  const ownerBoxW = 64;
-  const detailBoxW = 98;
-  const typeBoxX = contentX;
-  const ownerBoxX = typeBoxX + typeBoxW + 8;
-  const detailBoxX = ownerBoxX + ownerBoxW + 8;
-  const accountSize = 9.2;
-  const account = fitText(ctx, accountLocator(asset), accountSize, 145);
-  const accountW = ctx.font.widthOfTextAtSize(account, accountSize);
-  const accountX = MARGIN + CONTENT_W - accountW - 12;
-  const institutionX = contentX;
-  const institution = fitText(ctx, asset.institution || typeLabel, 10.5, Math.max(accountX - institutionX - 16, 120));
+// 资产清单章节顶部的分类计数概要，类似网页的筛选标签栏：「全部 23 · 股票 8 · …」。
+function drawCategorySummary(ctx: Ctx, doc: Document): void {
+  const total = doc.assets.length;
+  if (total === 0) return;
+  const groups = groupAssetsByFilter(doc.assets);
+  const chips = [
+    { label: "全部", count: total, primary: true },
+    ...groups.map((g) => ({ label: g.label, count: g.assets.length, primary: false })),
+  ];
 
-  ctx.page.drawRectangle({
-    x: MARGIN,
-    y,
-    width: CONTENT_W,
-    height: rowH,
-    borderColor: COLORS.border,
-    borderWidth: 0.5,
-    color: COLORS.white,
+  const padX = 14;
+  const padV = 12;
+  const rowH = 22;
+  const gapX = 16;
+  const labelSize = 10;
+  const badgeSize = 8.5;
+  const badgeH = 15;
+  const innerW = CONTENT_W - padX * 2;
+
+  const measured = chips.map((ch) => {
+    const labelW = ctx.font.widthOfTextAtSize(ch.label, labelSize);
+    const badgeW = Math.max(badgeH, ctx.font.widthOfTextAtSize(String(ch.count), badgeSize) + 12);
+    return { ...ch, labelW, badgeW, w: labelW + 5 + badgeW };
   });
-  ctx.page.drawText(num, {
-    x: MARGIN + 10,
-    y: textBaseline(y, rowH, 8.5),
-    size: 8.5,
-    font: ctx.font,
-    color: COLORS.light,
-  });
-  ctx.page.drawText(institution, {
-    x: institutionX,
-    y: y + 27,
-    size: 10.5,
-    font: ctx.font,
-    color: COLORS.dark,
-  });
-  ctx.page.drawText(account, {
-    x: accountX,
-    y: y + 27,
-    size: accountSize,
-    font: ctx.font,
-    color: COLORS.muted,
-  });
-  ctx.page.drawRectangle({
-    x: typeBoxX,
-    y: y + 7,
-    width: typeBoxW,
-    height: 16,
-    color: COLORS.amber100,
-  });
-  const typeText = fitText(ctx, typeLabel, 9, typeBoxW - 10);
-  ctx.page.drawText(typeText, {
-    x: typeBoxX + (typeBoxW - ctx.font.widthOfTextAtSize(typeText, 9)) / 2,
-    y: textBaseline(y + 7, 16, 9),
-    size: 9,
-    font: ctx.font,
-    color: COLORS.amber700,
-  });
-  const ownerText = fitText(ctx, owner, 8.5, ownerBoxW - 10);
-  ctx.page.drawRectangle({
-    x: ownerBoxX,
-    y: y + 7,
-    width: ownerBoxW,
-    height: 16,
-    color: COLORS.white,
-    borderColor: COLORS.border,
-    borderWidth: 0.25,
-  });
-  ctx.page.drawText(ownerText, {
-    x: ownerBoxX + (ownerBoxW - ctx.font.widthOfTextAtSize(ownerText, 8.5)) / 2,
-    y: textBaseline(y + 7, 16, 8.5),
-    size: 8.5,
-    font: ctx.font,
-    color: COLORS.dark,
-  });
-  if (detail) {
-    const detailText = fitText(ctx, detail, 8.5, detailBoxW - 10);
-    ctx.page.drawRectangle({
-      x: detailBoxX,
-      y: y + 7,
-      width: detailBoxW,
-      height: 16,
-      color: COLORS.amberBg,
-      borderColor: COLORS.amberBorder,
-      borderWidth: 0.25,
-    });
-    ctx.page.drawText(detailText, {
-      x: detailBoxX + (detailBoxW - ctx.font.widthOfTextAtSize(detailText, 8.5)) / 2,
-      y: textBaseline(y + 7, 16, 8.5),
-      size: 8.5,
-      font: ctx.font,
-      color: COLORS.muted,
-    });
+
+  // 按内容宽度折行
+  const rows: (typeof measured)[] = [];
+  let cur: typeof measured = [];
+  let curW = 0;
+  for (const ch of measured) {
+    const add = (cur.length ? gapX : 0) + ch.w;
+    if (curW + add > innerW && cur.length) {
+      rows.push(cur);
+      cur = [ch];
+      curW = ch.w;
+    } else {
+      cur.push(ch);
+      curW += add;
+    }
   }
-  ctx.y = y - 5;
+  if (cur.length) rows.push(cur);
+
+  const cardH = padV * 2 + rows.length * rowH;
+  need(ctx, cardH + 8);
+  const cardY = ctx.y - cardH;
+  ctx.page.drawRectangle({
+    x: MARGIN, y: cardY, width: CONTENT_W, height: cardH,
+    color: COLORS.amberBg, borderColor: COLORS.amberBorder, borderWidth: 0.5,
+  });
+
+  let rowTop = cardY + cardH - padV;
+  for (const row of rows) {
+    let x = MARGIN + padX;
+    for (const ch of row) {
+      ctx.page.drawText(ch.label, {
+        x, y: textBaseline(rowTop - rowH, rowH, labelSize),
+        size: labelSize, font: ctx.font, color: COLORS.dark,
+      });
+      x += ch.labelW + 5;
+      const badgeY = rowTop - rowH + (rowH - badgeH) / 2;
+      ctx.page.drawRectangle({
+        x, y: badgeY, width: ch.badgeW, height: badgeH,
+        color: ch.primary ? COLORS.amber700 : COLORS.amber100,
+      });
+      const countStr = String(ch.count);
+      ctx.page.drawText(countStr, {
+        x: x + (ch.badgeW - ctx.font.widthOfTextAtSize(countStr, badgeSize)) / 2,
+        y: textBaseline(badgeY, badgeH, badgeSize),
+        size: badgeSize, font: ctx.font, color: ch.primary ? COLORS.white : COLORS.amber700,
+      });
+      x += ch.badgeW + gapX;
+    }
+    rowTop -= rowH;
+  }
+  ctx.y = cardY - 8;
 }
 
-function drawGroupedAssets(ctx: Ctx, doc: Document, showAmounts: boolean): void {
+function drawGroupedAssets(ctx: Ctx, doc: Document, caps: VersionCaps): void {
   const groups = groupAssetsByFilter(doc.assets);
   if (groups.length === 0) {
     drawText(ctx, "（未填写资产信息）", 10, COLORS.light);
@@ -724,15 +751,16 @@ function drawGroupedAssets(ctx: Ctx, doc: Document, showAmounts: boolean): void 
 
   let globalNo = 1;
   for (const group of groups) {
+    // 避免组标题孤立在页尾：当「标题 + 首个卡片」放不下时先换页。
+    const firstRows = buildAssetRows(group.assets[0]!, caps);
+    const firstCardH = measureAssetCardHeight(ctx, firstRows);
+    if (ctx.y - (34 + firstCardH + 6) < MARGIN + 30) newPage(ctx);
+
     drawAssetGroupHeader(ctx, group.label, group.assets.length);
     for (const asset of group.assets) {
       const num = String(globalNo++).padStart(2, "0");
       const institution = asset.institution || ASSET_TYPE_LABELS[asset.type];
-      if (showAmounts) {
-        drawAssetCard(ctx, num, institution, ASSET_TYPE_LABELS[asset.type], buildAssetRows(asset, true));
-      } else {
-        drawRelativeAssetRow(ctx, num, asset);
-      }
+      drawAssetCard(ctx, num, institution, ASSET_TYPE_LABELS[asset.type], buildAssetRows(asset, caps));
     }
     ctx.y -= 6;
   }
@@ -816,8 +844,8 @@ export async function generatePdf(
   options: GeneratePdfOptions = {},
 ): Promise<Uint8Array> {
   const mode = options.mode ?? "full";
-  const showAmounts = mode === "full";
-  const modeLabel = showAmounts ? "夫妻版" : "亲属版";
+  const caps = capsForMode(mode);
+  const modeLabel = mode === "full" ? "夫妻版" : "亲属版";
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   let font: PDFFont;
@@ -858,37 +886,30 @@ export async function generatePdf(
   drawBoxedText(ctx, "⚠ 本文件使用 AES-256 加密，请妥善保管解锁密码。", 9.5, 32, {
     bgColor: COLORS.amberBg, borderColor: COLORS.amberBorder, textColor: COLORS.amber700,
   });
-  drawText(
-    ctx,
-    showAmounts
-      ? "夫妻版包含账户信息、具体金额、密码指引、紧急响应流程、自定义章节，并嵌入可导入草稿。"
-      : "亲属版仅包含基础机构和账户号码，按分类与账户估值降序排列；不包含目录、具体金额、密码指引或可导入草稿。",
-    9.5,
-    COLORS.muted,
-  );
+  // 夫妻版在封面给一句版本说明（与黄框留出间距）；亲属版不再赘述。
+  if (mode === "full") {
+    ctx.y -= 18;
+    drawText(
+      ctx,
+      "夫妻版：账户信息 + 具体金额 + 密码指引 + 紧急响应流程 + 自定义章节，\n并嵌入可导入草稿，便于日后继续编辑。",
+      9.5,
+      COLORS.muted,
+    );
+  }
 
   const cnNum = ["一", "二", "三", "四", "五"];
   let chapterNo = 0;
 
-  if (!showAmounts) {
-    ctx.y -= 18;
-    drawText(ctx, "资产账户清单", 16, COLORS.black);
-    ctx.y -= 2;
-    drawText(ctx, "按资产分类罗列，组内按账户估值从高到低排序。", 9, COLORS.muted);
-    ctx.y -= 8;
-    drawGroupedAssets(ctx, doc, false);
-  }
-
   // ===== 目录 =====
-  if (showAmounts) {
+  if (caps.toc) {
     newPage(ctx);
     drawText(ctx, "目录", 20, COLORS.black);
     ctx.y -= 8;
 
     const tocNames = ["资产清单"];
-    if (!doc.accessRemoved) tocNames.push("密码指引");
-    if (!doc.sopRemoved) tocNames.push("紧急响应流程");
-    if (!doc.customRemoved && doc.customSections.length > 0) tocNames.push("自定义章节");
+    if (caps.passwordGuide && !doc.accessRemoved) tocNames.push("密码指引");
+    if (caps.sop && !doc.sopRemoved) tocNames.push("紧急响应流程");
+    if (caps.custom && !doc.customRemoved && doc.customSections.length > 0) tocNames.push("自定义章节");
     const tocItems = tocNames.map((name, i) => `${cnNum[i]}、${name}`);
     for (const item of tocItems) {
       drawBoxedText(ctx, item, 10.5, 30, {
@@ -898,15 +919,14 @@ export async function generatePdf(
   }
 
   // ===== 一、资产清单 =====
-  if (showAmounts) {
-    newPage(ctx);
-    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "资产清单");
-    drawAssetOverview(ctx, doc, true);
-    drawGroupedAssets(ctx, doc, true);
-  }
+  newPage(ctx);
+  drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "资产清单");
+  drawCategorySummary(ctx, doc);
+  if (caps.totalAndCharts) await drawAssetOverview(ctx, doc, caps);
+  drawGroupedAssets(ctx, doc, caps);
 
   // ===== 二、密码指引 =====
-  if (showAmounts && !doc.accessRemoved) {
+  if (caps.passwordGuide && !doc.accessRemoved) {
     newPage(ctx);
     drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "密码指引");
 
@@ -941,7 +961,7 @@ export async function generatePdf(
   }
 
   // ===== 三、SOP =====
-  if (showAmounts && !doc.sopRemoved) {
+  if (caps.sop && !doc.sopRemoved) {
     newPage(ctx);
     drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "紧急响应流程");
 
@@ -952,7 +972,7 @@ export async function generatePdf(
   }
 
   // ===== 四、自定义 =====
-  if (showAmounts && !doc.customRemoved && doc.customSections.length > 0) {
+  if (caps.custom && !doc.customRemoved && doc.customSections.length > 0) {
     newPage(ctx);
     drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "自定义章节");
 
@@ -985,7 +1005,7 @@ export async function generatePdf(
     });
   }
 
-  if (showAmounts) {
+  if (caps.embedDraft) {
     // 夫妻版嵌入草稿数据，便于将来直接导入此 PDF 继续编辑；亲属版不嵌入，避免泄露完整明细。
     const draftBytes = new TextEncoder().encode(JSON.stringify(wrapDraft(doc)));
     await pdf.attach(draftBytes, DRAFT_ATTACHMENT_NAME, {
@@ -1012,14 +1032,7 @@ export async function downloadPdf(bytes: Uint8Array, mode: PdfOutputMode = "full
   const fileName = `家庭应急手册-${suffix}-${ts}.pdf`;
   const blob = new Blob([bytes], { type: "application/pdf" });
 
-  try {
-    const file = new File([blob], fileName, { type: "application/pdf" });
-    if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: fileName });
-      return;
-    }
-  } catch {}
-
+  // 直接下载文件，不走 navigator.share（在桌面端会弹出系统分享菜单，体验不佳）。
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

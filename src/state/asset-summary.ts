@@ -39,7 +39,6 @@ export interface AssetPoolTotals {
   china: number;
   stockAccountTotal: number;
   companyGrantedStock: number;
-  companyGrantedCash: number;
 }
 
 export interface AssetSummary {
@@ -59,6 +58,14 @@ export function parseMoney(value: string): number {
 
 export function formatCny(value: number): string {
   return `¥${Math.round(value).toLocaleString()}`;
+}
+
+// 亲属版用的粗粒度金额：向下取整到 100 万，例如 15,473,500 → "1,500 万+"。
+// 既给出量级认知，又不暴露精确数字。
+export function formatCoarseCny(value: number): string {
+  if (value < 1_000_000) return "100 万以内";
+  const wan = Math.floor(value / 1_000_000) * 100;
+  return `${wan.toLocaleString()} 万+`;
 }
 
 export function isStockAccount(type: AssetType): boolean {
@@ -125,10 +132,6 @@ export function groupAssetsByFilter(assets: Asset[]): Array<{ id: AssetFilter; l
     .filter((group) => group.assets.length > 0);
 }
 
-export function toCnyFromCurrency(value: number, currency: Currency): number {
-  return value * (CNY_RATES[currency] ?? 1);
-}
-
 export function calculateAssetPool(assets: Asset[]): AssetPoolTotals {
   return assets.reduce<AssetPoolTotals>(
     (acc, asset) => {
@@ -146,13 +149,11 @@ export function calculateAssetPool(assets: Asset[]): AssetPoolTotals {
         const stockPosition = Math.max(estimated - stockCash, 0);
         const accountTotalCny = toCny(asset, estimated);
         const grantedStock = Math.max(parseMoney(asset.companyGrantedStockValue), 0);
-        const grantedCash = Math.max(parseMoney(asset.companyGrantedCashValue), 0);
 
         acc.stockCash += toCny(asset, stockCash);
         acc.stockPosition += toCny(asset, stockPosition);
         acc.stockAccountTotal += accountTotalCny;
         acc.companyGrantedStock += toCny(asset, grantedStock);
-        acc.companyGrantedCash += toCnyFromCurrency(grantedCash, asset.companyGrantedCashCurrency);
         if (isOverseasAsset(asset.type)) {
           acc.overseas += accountTotalCny;
         } else {
@@ -183,7 +184,6 @@ export function calculateAssetPool(assets: Asset[]): AssetPoolTotals {
       china: 0,
       stockAccountTotal: 0,
       companyGrantedStock: 0,
-      companyGrantedCash: 0,
     },
   );
 }
@@ -192,9 +192,7 @@ export function summarizeAssets(assets: Asset[]): AssetSummary {
   const totals = calculateAssetPool(assets);
   const totalCny = totals.stockCash + totals.bankDeposit + totals.stockPosition + totals.realEstate;
   const companyGrantedStock = Math.min(totals.companyGrantedStock, totals.stockPosition);
-  const companyGrantedCash = Math.min(totals.companyGrantedCash, totals.stockCash);
   const selfPurchasedStock = Math.max(totals.stockPosition - companyGrantedStock, 0);
-  const otherStockCash = Math.max(totals.stockCash - companyGrantedCash, 0);
 
   return {
     totals,
@@ -213,9 +211,8 @@ export function summarizeAssets(assets: Asset[]): AssetSummary {
     ],
     stockSourceItems: [
       { key: "companyGrantedStock", label: "公司授予股票", description: "已标注的公司授予股票市值", value: companyGrantedStock, color: "#7c3aed" },
-      { key: "companyGrantedCash", label: "公司授予现金", description: "已标注的授予股票相关现金", value: companyGrantedCash, color: "#db2777" },
       { key: "selfPurchasedStock", label: "自购股票", description: "股票账户非现金部分扣除公司授予股票", value: selfPurchasedStock, color: "#2563eb" },
-      { key: "otherStockCash", label: "其他股票账户现金", description: "股票账户现金扣除公司授予现金", value: otherStockCash, color: "#059669" },
+      { key: "stockCash", label: "股票账户现金", description: "券商账户内现金余额", value: totals.stockCash, color: "#059669" },
     ],
   };
 }
