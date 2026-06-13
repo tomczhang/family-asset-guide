@@ -3,20 +3,24 @@ export type AssetType =
   | "us_stock"
   | "hk_stock"
   | "a_stock"
+  | "fund"
   | "bank_deposit"
   | "insurance"
   | "real_estate"
   | "crypto"
+  | "debt"
   | "other";
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   us_stock: "美股",
   hk_stock: "港股",
   a_stock: "A股",
+  fund: "基金",
   bank_deposit: "银行存款",
   insurance: "保险",
   real_estate: "不动产",
   crypto: "加密货币",
+  debt: "欠款",
   other: "其他",
 };
 
@@ -45,6 +49,12 @@ export interface Asset {
   contactPhone: string;
   appDownload: string;
   estimatedValue: string;
+  cashValue: string;
+  companyGrantedStockValue: string;
+  companyGrantedCashValue: string;
+  companyGrantedCashCurrency: Currency;
+  assetDetail: string;
+  accountOwner: string;
   currency: Currency;
   hasBeneficiary: boolean;
   beneficiary: string;

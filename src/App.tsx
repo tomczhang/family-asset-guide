@@ -12,6 +12,7 @@ import { MobileStepperBar } from "./components/MobileStepperBar";
 import { MobileTocOverlay } from "./components/MobileTocOverlay";
 import { PasswordModal } from "./components/PasswordModal";
 import { generatePdf, downloadPdf } from "./pdf/generate";
+import type { PdfOutputMode } from "./pdf/generate";
 
 function AppContent() {
   const { doc, dispatch, openPasswordModal, setOpenPasswordModal } = useAppState();
@@ -50,12 +51,12 @@ function AppContent() {
   const stepCounts = steps.map((s) => s.count);
 
   const handleGenerate = useCallback(
-    async (password: string) => {
+    async (password: string, mode: PdfOutputMode) => {
       setPdfGenerating(true);
       setPdfStatus("");
       try {
-        const bytes = await generatePdf(doc, password, setPdfStatus);
-        await downloadPdf(bytes);
+        const bytes = await generatePdf(doc, password, setPdfStatus, { mode });
+        await downloadPdf(bytes, mode);
         setOpenPasswordModal(false);
       } catch (err) {
         alert(`PDF 生成失败: ${err instanceof Error ? err.message : "未知错误"}`);

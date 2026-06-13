@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./PasswordModal.css";
+import type { PdfOutputMode } from "../pdf/generate";
 
 interface Props {
   open: boolean;
   generating: boolean;
   statusMessage: string;
   onClose: () => void;
-  onConfirm: (password: string) => void;
+  onConfirm: (password: string, mode: PdfOutputMode) => void;
 }
 
 function strengthLabel(pw: string): { text: string; color: string } {
@@ -19,6 +20,14 @@ function strengthLabel(pw: string): { text: string; color: string } {
 export function PasswordModal({ open, generating, statusMessage, onClose, onConfirm }: Props) {
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+  const [mode, setMode] = useState<PdfOutputMode>("relative");
+
+  useEffect(() => {
+    if (!open) return;
+    setPassword("");
+    setConfirmPw("");
+    setMode("relative");
+  }, [open]);
 
   if (!open) return null;
 
@@ -28,7 +37,7 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
   const canSubmit = valid && confirmed && !generating;
 
   const handleSubmit = () => {
-    if (canSubmit) onConfirm(password);
+    if (canSubmit) onConfirm(password, mode);
   };
 
   return (
@@ -47,6 +56,29 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
           <>
             <div className="warning-banner">
               ⚠ 此密码是 PDF 的唯一解锁方式，请务必记录并妥善保管。
+            </div>
+
+            <div className="pdf-mode-group" role="radiogroup" aria-label="PDF 导出类型">
+              <button
+                type="button"
+                className={`pdf-mode-option${mode === "relative" ? " pdf-mode-option--active" : ""}`}
+                role="radio"
+                aria-checked={mode === "relative"}
+                onClick={() => setMode("relative")}
+              >
+                <span className="pdf-mode-title">亲属版</span>
+                <span className="pdf-mode-desc">账户信息 + 资产比例；不含具体金额、密码指引和草稿附件。</span>
+              </button>
+              <button
+                type="button"
+                className={`pdf-mode-option${mode === "full" ? " pdf-mode-option--active" : ""}`}
+                role="radio"
+                aria-checked={mode === "full"}
+                onClick={() => setMode("full")}
+              >
+                <span className="pdf-mode-title">夫妻版</span>
+                <span className="pdf-mode-desc">账户信息 + 完整资产金额；包含密码指引和可导入草稿。</span>
+              </button>
             </div>
 
             <div className="field" style={{ marginBottom: "var(--sp-3)" }}>
@@ -96,7 +128,7 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
                 onClick={handleSubmit}
                 style={{ opacity: canSubmit ? 1 : 0.5 }}
               >
-                生成加密 PDF
+                生成{mode === "full" ? "夫妻版" : "亲属版"} PDF
               </button>
             </div>
           </>

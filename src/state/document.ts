@@ -1,6 +1,7 @@
 import type {
   Document,
   Asset,
+  AssetType,
   SealedEnvelope,
   TwoFactorEntry,
   SopStage,
@@ -38,7 +39,7 @@ export function createEmptyDocument(): Document {
 
 export type DocAction =
   | { type: "SET_META"; field: keyof Document["meta"]; value: string }
-  | { type: "ADD_ASSET" }
+  | { type: "ADD_ASSET"; assetType?: AssetType }
   | { type: "UPDATE_ASSET"; id: string; patch: Partial<Asset> }
   | { type: "REMOVE_ASSET"; id: string }
   | { type: "ADD_TWO_FACTOR"; assetId: string }
@@ -63,13 +64,19 @@ function touch(doc: Document): Document {
   return { ...doc, meta: { ...doc.meta, updatedAt: new Date().toISOString() } };
 }
 
+function defaultCurrencyForAsset(type: AssetType): Asset["currency"] {
+  if (type === "us_stock" || type === "crypto") return "USD";
+  if (type === "hk_stock") return "HKD";
+  return "CNY";
+}
+
 export function docReducer(state: Document, action: DocAction): Document {
   switch (action.type) {
     case "SET_META":
       return touch({ ...state, meta: { ...state.meta, [action.field]: action.value } });
 
     case "ADD_ASSET": {
-      const defaultType = "us_stock" as const;
+      const defaultType = action.assetType ?? "us_stock";
       const defaultInstId = DEFAULT_INSTITUTION[defaultType];
       const inst = getInstitutionById(defaultInstId);
       return touch({
@@ -89,7 +96,13 @@ export function docReducer(state: Document, action: DocAction): Document {
             contactPhone: inst ? inst.phone : "",
             appDownload: inst ? inst.appDownload : "",
             estimatedValue: "",
-            currency: "USD",
+            cashValue: "",
+            companyGrantedStockValue: "",
+            companyGrantedCashValue: "",
+            companyGrantedCashCurrency: "CNY",
+            assetDetail: "",
+            accountOwner: "",
+            currency: defaultCurrencyForAsset(defaultType),
             hasBeneficiary: false,
             beneficiary: "",
             notes: "",
@@ -311,6 +324,12 @@ function migrate(envelope: DraftEnvelope): Document {
       ...a,
       institutionId: (asset["institutionId"] as string) ?? "",
       appDownload: (asset["appDownload"] as string) ?? "",
+      cashValue: (asset["cashValue"] as string) ?? "",
+      companyGrantedStockValue: (asset["companyGrantedStockValue"] as string) ?? "",
+      companyGrantedCashValue: (asset["companyGrantedCashValue"] as string) ?? "",
+      companyGrantedCashCurrency: ((asset["companyGrantedCashCurrency"] as string) ?? "CNY") as Asset["companyGrantedCashCurrency"],
+      assetDetail: (asset["assetDetail"] as string) ?? "",
+      accountOwner: (asset["accountOwner"] as string) ?? (a.type === "bank_deposit" ? ((asset["loginUsername"] as string) ?? "") : ""),
       hasBeneficiary: (asset["hasBeneficiary"] as boolean) ?? false,
       beneficiary: (asset["beneficiary"] as string) ?? "",
       registerEmail: (asset["registerEmail"] as string) ?? "",

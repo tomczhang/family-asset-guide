@@ -269,10 +269,12 @@ export const DEFAULT_INSTITUTION: Record<AssetType, string> = {
   us_stock: "ibkr",
   hk_stock: "futu",
   a_stock: "yinhe",
+  fund: "",
   bank_deposit: "cmb",
   insurance: "pingan",
   crypto: "binance",
   real_estate: "",
+  debt: "",
   other: "",
 };
 

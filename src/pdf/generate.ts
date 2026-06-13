@@ -1,10 +1,17 @@
 import { PDFDocument, rgb, type PDFPage, type PDFFont } from "@cantoo/pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { Document } from "../state/types";
+import type { Asset, Document } from "../state/types";
 import { ASSET_TYPE_LABELS, CURRENCY_LABELS } from "../state/types";
 import { wrapDraft, unwrapDraft } from "../state/document";
+import { formatCny, groupAssetsByFilter, summarizeAssets } from "../state/asset-summary";
+import type { ChartItem } from "../state/asset-summary";
 
 export const DRAFT_ATTACHMENT_NAME = "family-asset-guide-draft.json";
+export type PdfOutputMode = "relative" | "full";
+
+interface GeneratePdfOptions {
+  mode?: PdfOutputMode;
+}
 
 // 从（加密的）PDF 中提取此前嵌入的草稿数据，用于直接导入 PDF 继续编辑。
 export async function extractDraftFromPdf(
@@ -55,6 +62,7 @@ const COLORS = {
   amberBg: rgb(1, 0.984, 0.92),
   amberBorder: rgb(0.98, 0.84, 0.46),
   white: rgb(1, 1, 1),
+  green: rgb(0.02, 0.59, 0.41),
 };
 
 interface Ctx {
@@ -351,6 +359,385 @@ function drawDivider(ctx: Ctx): void {
   ctx.y -= 8;
 }
 
+function colorFromHex(hex: string): ReturnType<typeof rgb> {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return rgb(r, g, b);
+}
+
+function polarPoint(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
+  const rad = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function donutSegmentPath(cx: number, cy: number, outerR: number, innerR: number, startDeg: number, endDeg: number): string {
+  const span = Math.max(endDeg - startDeg, 0);
+  const steps = Math.max(2, Math.ceil(span / 6));
+  const outerPoints = Array.from({ length: steps + 1 }, (_, i) => polarPoint(cx, cy, outerR, startDeg + (span * i) / steps));
+  const innerPoints = Array.from({ length: steps + 1 }, (_, i) => polarPoint(cx, cy, innerR, endDeg - (span * i) / steps));
+  const [first, ...rest] = [...outerPoints, ...innerPoints];
+  if (!first) return "";
+  return [
+    `M ${first.x.toFixed(2)} ${first.y.toFixed(2)}`,
+    ...rest.map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
+    "Z",
+  ].join(" ");
+}
+
+function drawDonut(ctx: Ctx, items: ChartItem[], cx: number, cy: number, outerR: number, innerR: number): void {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) {
+    ctx.page.drawCircle({ x: cx, y: cy, size: outerR, color: COLORS.border });
+    ctx.page.drawCircle({ x: cx, y: cy, size: innerR, color: COLORS.white });
+    return;
+  }
+
+  let cursor = 0;
+  for (const item of items) {
+    if (item.value <= 0) continue;
+    const next = cursor + (item.value / total) * 360;
+    if (next - cursor >= 359.9) {
+      ctx.page.drawCircle({ x: cx, y: cy, size: outerR, color: colorFromHex(item.color) });
+    } else {
+      ctx.page.drawSvgPath(donutSegmentPath(cx, cy, outerR, innerR, cursor, next), {
+        color: colorFromHex(item.color),
+      });
+    }
+    cursor = next;
+  }
+  ctx.page.drawCircle({ x: cx, y: cy, size: innerR, color: COLORS.white });
+}
+
+function amountText(value: number, showAmounts: boolean): string {
+  return showAmounts ? formatCny(value) : "¥***";
+}
+
+function drawChartSummary(ctx: Ctx, doc: Document, showAmounts: boolean): void {
+  const summary = summarizeAssets(doc.assets);
+  const summaryH = 48;
+  need(ctx, summaryH + 8);
+  const y = ctx.y - summaryH;
+  ctx.page.drawRectangle({
+    x: MARGIN, y, width: CONTENT_W, height: summaryH,
+    color: COLORS.amberBg, borderColor: COLORS.amberBorder, borderWidth: 0.5,
+  });
+  ctx.page.drawText(`资产池总计 ${amountText(summary.totalCny, showAmounts)}`, {
+    x: MARGIN + 12, y: y + 27, size: 13, font: ctx.font, color: COLORS.black,
+  });
+  const tags = [
+    summary.hasInsurance ? "不含保单" : "",
+    summary.hasDebt ? "欠款仅提醒" : "",
+  ].filter(Boolean).join(" · ");
+  if (tags) {
+    ctx.page.drawText(tags, {
+      x: MARGIN + 160, y: y + 28, size: 9, font: ctx.font, color: COLORS.light,
+    });
+  }
+  ctx.page.drawText(
+    showAmounts
+      ? "只统计股票账户现金、银行存款、股票/基金和不动产；其他资产保留在清单明细中。"
+      : "亲属版仅展示账户信息和资产占比，不包含具体金额、密码指引或可导入草稿。",
+    {
+    x: MARGIN + 12, y: y + 11, size: 8.5, font: ctx.font, color: COLORS.muted,
+    },
+  );
+  ctx.y = y - 8;
+}
+
+function drawOverviewChart(ctx: Ctx, title: string, subtitle: string, items: ChartItem[], showAmounts: boolean): void {
+  const rowGap = 28;
+  const cardH = Math.max(142, 84 + items.length * rowGap);
+  need(ctx, cardH + 8);
+  const cardY = ctx.y - cardH;
+  const pieCx = MARGIN + 64;
+  const pieCy = cardY + Math.min(72, cardH / 2);
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+
+  ctx.page.drawRectangle({
+    x: MARGIN, y: cardY, width: CONTENT_W, height: cardH,
+    color: COLORS.white, borderColor: COLORS.border, borderWidth: 0.5,
+  });
+  ctx.page.drawText(title, {
+    x: MARGIN + 12, y: cardY + cardH - 24, size: 12, font: ctx.font, color: COLORS.black,
+  });
+  ctx.page.drawText(subtitle, {
+    x: MARGIN + 12, y: cardY + cardH - 40, size: 8.5, font: ctx.font, color: COLORS.muted,
+  });
+
+  drawDonut(ctx, items, pieCx, pieCy, 42, 21);
+  const totalText = amountText(total, showAmounts);
+  ctx.page.drawText("合计", {
+    x: pieCx - ctx.font.widthOfTextAtSize("合计", 7.5) / 2,
+    y: pieCy + 5,
+    size: 7.5, font: ctx.font, color: COLORS.light,
+  });
+  ctx.page.drawText(totalText, {
+    x: pieCx - ctx.font.widthOfTextAtSize(totalText, 8.5) / 2,
+    y: pieCy - 8,
+    size: 8.5, font: ctx.font, color: COLORS.black,
+  });
+
+  let rowY = cardY + cardH - 60;
+  const legendX = MARGIN + 140;
+  const valueX = MARGIN + CONTENT_W - 12;
+  for (const item of items) {
+    const pct = total > 0 ? (item.value / total) * 100 : 0;
+    const value = `${amountText(item.value, showAmounts)} · ${pct.toFixed(1)}%`;
+    ctx.page.drawCircle({ x: legendX, y: rowY + 2, size: 4, color: colorFromHex(item.color) });
+    ctx.page.drawText(item.label, { x: legendX + 10, y: rowY, size: 9.5, font: ctx.font, color: COLORS.dark });
+    ctx.page.drawText(value, {
+      x: valueX - ctx.font.widthOfTextAtSize(value, 9.5),
+      y: rowY,
+      size: 9.5, font: ctx.font, color: COLORS.black,
+    });
+    ctx.page.drawText(item.description, {
+      x: legendX + 10, y: rowY - 13, size: 7.5, font: ctx.font, color: COLORS.light,
+    });
+    rowY -= rowGap;
+  }
+
+  ctx.y = cardY - 8;
+}
+
+function drawAssetOverview(ctx: Ctx, doc: Document, showAmounts: boolean): void {
+  const summary = summarizeAssets(doc.assets);
+  drawChartSummary(ctx, doc, showAmounts);
+  drawOverviewChart(
+    ctx,
+    "资产分布概览",
+    "只统计股票账户现金、银行存款、股票和不动产；欠款只提醒，不进入总额。",
+    summary.allocationItems,
+    showAmounts,
+  );
+  drawOverviewChart(
+    ctx,
+    "中美资产分布",
+    "美股和港股账户归海外资产，其他资产归中国资产。",
+    summary.regionItems,
+    showAmounts,
+  );
+  drawOverviewChart(
+    ctx,
+    "股票账户来源拆分",
+    "区分公司授予股票/现金与自购股票，基金不纳入这张来源图。",
+    summary.stockSourceItems,
+    showAmounts,
+  );
+}
+
+function buildAssetRows(a: Asset, showAmounts: boolean): AssetRow[] {
+  const isInsurance = a.type === "insurance";
+  const isStockAccount = a.type === "us_stock" || a.type === "hk_stock" || a.type === "a_stock";
+  const isDebt = a.type === "debt";
+
+  return [
+    ...(isInsurance ? [
+      ...(a.insuranceKind ? [{ label: "险种", value: a.insuranceKind }] : []),
+      { label: "保单号", value: a.accountNumber },
+      ...(a.insuredPerson ? [{ label: "被保人", value: a.insuredPerson }] : []),
+      { label: "缴费年限", value: a.paymentYears || "—" },
+      { label: "缴费状态", value: a.stillPaying ? "缴费中" : "已缴清" },
+      ...(showAmounts ? [{ label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
+    ] : [
+      { label: isDebt ? "合同/贷款编号" : "账户号码", value: a.accountNumber },
+      ...(a.accountOwner ? [{ label: "账户所有人", value: a.accountOwner }] : []),
+      ...(a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
+      ...(a.registerEmail ? [{ label: "注册邮箱", value: a.registerEmail }] : []),
+      ...(a.bindPhone ? [{ label: "绑定手机", value: a.bindPhone }] : []),
+      { label: "登录网址", value: a.loginUrl },
+      { label: "联系电话", value: a.contactPhone },
+      ...(a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
+      ...(showAmounts && isStockAccount && a.cashValue ? [{ label: "账户现金", value: `${CURRENCY_LABELS[a.currency]} ${a.cashValue}` }] : []),
+      ...(showAmounts && isStockAccount && a.companyGrantedStockValue ? [{ label: "公司授予股票", value: `${CURRENCY_LABELS[a.currency]} ${a.companyGrantedStockValue}` }] : []),
+      ...(showAmounts && isStockAccount && a.companyGrantedCashValue ? [{ label: "公司授予现金", value: `${CURRENCY_LABELS[a.companyGrantedCashCurrency]} ${a.companyGrantedCashValue}` }] : []),
+      ...(showAmounts ? [{ label: isDebt ? "欠款余额" : isStockAccount ? "账户总估值" : "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
+    ]),
+    ...(showAmounts ? [{ label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" }] : []),
+    ...(showAmounts && a.notes ? [{ label: "备注", value: a.notes }] : []),
+  ];
+}
+
+function drawAssetGroupHeader(ctx: Ctx, label: string, count: number): void {
+  need(ctx, 36);
+  ctx.y -= 4;
+  const h = 24;
+  const y = ctx.y - h;
+  ctx.page.drawRectangle({ x: MARGIN, y, width: CONTENT_W, height: h, color: COLORS.amber100 });
+  ctx.page.drawText(label, {
+    x: MARGIN + 10,
+    y: textBaseline(y, h, 11),
+    size: 11,
+    font: ctx.font,
+    color: COLORS.amber700,
+  });
+  const meta = `${count} 个账户 · 按估值降序`;
+  ctx.page.drawText(meta, {
+    x: PAGE_W - MARGIN - ctx.font.widthOfTextAtSize(meta, 8.5) - 10,
+    y: textBaseline(y, h, 8.5),
+    size: 8.5,
+    font: ctx.font,
+    color: COLORS.muted,
+  });
+  ctx.y = y - 6;
+}
+
+function accountLocator(asset: Asset): string {
+  return asset.accountNumber || asset.loginUsername || asset.registerEmail || asset.bindPhone || "—";
+}
+
+function assetDetailText(asset: Asset): string {
+  if (asset.type === "insurance" && asset.insuranceKind) return asset.insuranceKind;
+  if (asset.assetDetail) return asset.assetDetail;
+  return "";
+}
+
+function accountOwnerText(asset: Asset): string {
+  if (asset.type === "insurance" && asset.insuredPerson) return asset.insuredPerson;
+  return asset.accountOwner || "未填写所有人";
+}
+
+function fitText(ctx: Ctx, text: string, size: number, maxW: number): string {
+  if (ctx.font.widthOfTextAtSize(text, size) <= maxW) return text;
+  const suffix = "...";
+  let result = "";
+  for (const ch of text) {
+    const next = result + ch;
+    if (ctx.font.widthOfTextAtSize(next + suffix, size) > maxW) break;
+    result = next;
+  }
+  return result ? result + suffix : suffix;
+}
+
+function drawRelativeAssetRow(ctx: Ctx, num: string, asset: Asset): void {
+  const rowH = 46;
+  need(ctx, rowH + 5);
+  const y = ctx.y - rowH;
+  const typeLabel = ASSET_TYPE_LABELS[asset.type];
+  const detail = assetDetailText(asset);
+  const owner = accountOwnerText(asset);
+  const contentX = MARGIN + 40;
+  const typeBoxW = 58;
+  const ownerBoxW = 64;
+  const detailBoxW = 98;
+  const typeBoxX = contentX;
+  const ownerBoxX = typeBoxX + typeBoxW + 8;
+  const detailBoxX = ownerBoxX + ownerBoxW + 8;
+  const accountSize = 9.2;
+  const account = fitText(ctx, accountLocator(asset), accountSize, 145);
+  const accountW = ctx.font.widthOfTextAtSize(account, accountSize);
+  const accountX = MARGIN + CONTENT_W - accountW - 12;
+  const institutionX = contentX;
+  const institution = fitText(ctx, asset.institution || typeLabel, 10.5, Math.max(accountX - institutionX - 16, 120));
+
+  ctx.page.drawRectangle({
+    x: MARGIN,
+    y,
+    width: CONTENT_W,
+    height: rowH,
+    borderColor: COLORS.border,
+    borderWidth: 0.5,
+    color: COLORS.white,
+  });
+  ctx.page.drawText(num, {
+    x: MARGIN + 10,
+    y: textBaseline(y, rowH, 8.5),
+    size: 8.5,
+    font: ctx.font,
+    color: COLORS.light,
+  });
+  ctx.page.drawText(institution, {
+    x: institutionX,
+    y: y + 27,
+    size: 10.5,
+    font: ctx.font,
+    color: COLORS.dark,
+  });
+  ctx.page.drawText(account, {
+    x: accountX,
+    y: y + 27,
+    size: accountSize,
+    font: ctx.font,
+    color: COLORS.muted,
+  });
+  ctx.page.drawRectangle({
+    x: typeBoxX,
+    y: y + 7,
+    width: typeBoxW,
+    height: 16,
+    color: COLORS.amber100,
+  });
+  const typeText = fitText(ctx, typeLabel, 9, typeBoxW - 10);
+  ctx.page.drawText(typeText, {
+    x: typeBoxX + (typeBoxW - ctx.font.widthOfTextAtSize(typeText, 9)) / 2,
+    y: textBaseline(y + 7, 16, 9),
+    size: 9,
+    font: ctx.font,
+    color: COLORS.amber700,
+  });
+  const ownerText = fitText(ctx, owner, 8.5, ownerBoxW - 10);
+  ctx.page.drawRectangle({
+    x: ownerBoxX,
+    y: y + 7,
+    width: ownerBoxW,
+    height: 16,
+    color: COLORS.white,
+    borderColor: COLORS.border,
+    borderWidth: 0.25,
+  });
+  ctx.page.drawText(ownerText, {
+    x: ownerBoxX + (ownerBoxW - ctx.font.widthOfTextAtSize(ownerText, 8.5)) / 2,
+    y: textBaseline(y + 7, 16, 8.5),
+    size: 8.5,
+    font: ctx.font,
+    color: COLORS.dark,
+  });
+  if (detail) {
+    const detailText = fitText(ctx, detail, 8.5, detailBoxW - 10);
+    ctx.page.drawRectangle({
+      x: detailBoxX,
+      y: y + 7,
+      width: detailBoxW,
+      height: 16,
+      color: COLORS.amberBg,
+      borderColor: COLORS.amberBorder,
+      borderWidth: 0.25,
+    });
+    ctx.page.drawText(detailText, {
+      x: detailBoxX + (detailBoxW - ctx.font.widthOfTextAtSize(detailText, 8.5)) / 2,
+      y: textBaseline(y + 7, 16, 8.5),
+      size: 8.5,
+      font: ctx.font,
+      color: COLORS.muted,
+    });
+  }
+  ctx.y = y - 5;
+}
+
+function drawGroupedAssets(ctx: Ctx, doc: Document, showAmounts: boolean): void {
+  const groups = groupAssetsByFilter(doc.assets);
+  if (groups.length === 0) {
+    drawText(ctx, "（未填写资产信息）", 10, COLORS.light);
+    return;
+  }
+
+  let globalNo = 1;
+  for (const group of groups) {
+    drawAssetGroupHeader(ctx, group.label, group.assets.length);
+    for (const asset of group.assets) {
+      const num = String(globalNo++).padStart(2, "0");
+      const institution = asset.institution || ASSET_TYPE_LABELS[asset.type];
+      if (showAmounts) {
+        drawAssetCard(ctx, num, institution, ASSET_TYPE_LABELS[asset.type], buildAssetRows(asset, true));
+      } else {
+        drawRelativeAssetRow(ctx, num, asset);
+      }
+    }
+    ctx.y -= 6;
+  }
+}
+
 function wrapText(text: string, font: PDFFont, size: number, maxW: number): string[] {
   if (!text) return [];
   const result: string[] = [];
@@ -426,7 +813,11 @@ export async function generatePdf(
   doc: Document,
   password: string,
   onStatus?: (msg: string) => void,
+  options: GeneratePdfOptions = {},
 ): Promise<Uint8Array> {
+  const mode = options.mode ?? "full";
+  const showAmounts = mode === "full";
+  const modeLabel = showAmounts ? "夫妻版" : "亲属版";
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   let font: PDFFont;
@@ -450,6 +841,13 @@ export async function generatePdf(
   ctx.y = PAGE_H - 160;
 
   ctx.page.drawText("家庭资产应急手册", { x: MARGIN, y: ctx.y, size: 28, font, color: COLORS.black });
+  ctx.page.drawText(modeLabel, {
+    x: MARGIN + ctx.font.widthOfTextAtSize("家庭资产应急手册", 28) + 16,
+    y: ctx.y + 3,
+    size: 13,
+    font,
+    color: COLORS.amber700,
+  });
   ctx.y -= 12;
   ctx.page.drawRectangle({ x: MARGIN, y: ctx.y, width: 170, height: 3, color: COLORS.amber700 });
   ctx.y -= 36;
@@ -460,63 +858,55 @@ export async function generatePdf(
   drawBoxedText(ctx, "⚠ 本文件使用 AES-256 加密，请妥善保管解锁密码。", 9.5, 32, {
     bgColor: COLORS.amberBg, borderColor: COLORS.amberBorder, textColor: COLORS.amber700,
   });
-
-  // ===== 目录 =====
-  newPage(ctx);
-  drawText(ctx, "目录", 20, COLORS.black);
-  ctx.y -= 8;
+  drawText(
+    ctx,
+    showAmounts
+      ? "夫妻版包含账户信息、具体金额、密码指引、紧急响应流程、自定义章节，并嵌入可导入草稿。"
+      : "亲属版仅包含基础机构和账户号码，按分类与账户估值降序排列；不包含目录、具体金额、密码指引或可导入草稿。",
+    9.5,
+    COLORS.muted,
+  );
 
   const cnNum = ["一", "二", "三", "四", "五"];
   let chapterNo = 0;
-  const tocNames = ["资产清单"];
-  if (!doc.accessRemoved) tocNames.push("密码指引");
-  if (!doc.sopRemoved) tocNames.push("紧急响应流程");
-  if (!doc.customRemoved && doc.customSections.length > 0) tocNames.push("自定义章节");
-  const tocItems = tocNames.map((name, i) => `${cnNum[i]}、${name}`);
-  for (const item of tocItems) {
-    drawBoxedText(ctx, item, 10.5, 30, {
-      bgColor: COLORS.white, borderColor: COLORS.border, textColor: COLORS.body,
-    });
+
+  if (!showAmounts) {
+    ctx.y -= 18;
+    drawText(ctx, "资产账户清单", 16, COLORS.black);
+    ctx.y -= 2;
+    drawText(ctx, "按资产分类罗列，组内按账户估值从高到低排序。", 9, COLORS.muted);
+    ctx.y -= 8;
+    drawGroupedAssets(ctx, doc, false);
+  }
+
+  // ===== 目录 =====
+  if (showAmounts) {
+    newPage(ctx);
+    drawText(ctx, "目录", 20, COLORS.black);
+    ctx.y -= 8;
+
+    const tocNames = ["资产清单"];
+    if (!doc.accessRemoved) tocNames.push("密码指引");
+    if (!doc.sopRemoved) tocNames.push("紧急响应流程");
+    if (!doc.customRemoved && doc.customSections.length > 0) tocNames.push("自定义章节");
+    const tocItems = tocNames.map((name, i) => `${cnNum[i]}、${name}`);
+    for (const item of tocItems) {
+      drawBoxedText(ctx, item, 10.5, 30, {
+        bgColor: COLORS.white, borderColor: COLORS.border, textColor: COLORS.body,
+      });
+    }
   }
 
   // ===== 一、资产清单 =====
-  newPage(ctx);
-  drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "资产清单");
-
-  if (doc.assets.length === 0) {
-    drawText(ctx, "（未填写资产信息）", 10, COLORS.light);
-  }
-  for (let i = 0; i < doc.assets.length; i++) {
-    const a = doc.assets[i]!;
-    const isInsurance = a.type === "insurance";
-    const institution = a.institution || ASSET_TYPE_LABELS[a.type];
-    const typeLabel = ASSET_TYPE_LABELS[a.type];
-
-    drawAssetCard(ctx, String(i + 1).padStart(2, "0"), institution, typeLabel, [
-      ...(isInsurance ? [
-        ...(a.insuranceKind ? [{ label: "险种", value: a.insuranceKind }] : []),
-        { label: "保单号", value: a.accountNumber },
-        ...(a.insuredPerson ? [{ label: "保险人", value: a.insuredPerson }] : []),
-        { label: "缴费年限", value: a.paymentYears || "—" },
-        { label: "缴费状态", value: a.stillPaying ? "缴费中" : "已缴清" },
-        { label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true },
-      ] : [
-        { label: "账户号码", value: a.accountNumber },
-        ...(a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
-        ...(a.registerEmail ? [{ label: "注册邮箱", value: a.registerEmail }] : []),
-        ...(a.bindPhone ? [{ label: "绑定手机", value: a.bindPhone }] : []),
-        { label: "登录网址", value: a.loginUrl },
-        { label: "联系电话", value: a.contactPhone },
-        ...(a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
-        { label: "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true },
-      ]),
-      { label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" },
-      ...(a.notes ? [{ label: "备注", value: a.notes }] : []),
-    ]);
+  if (showAmounts) {
+    newPage(ctx);
+    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "资产清单");
+    drawAssetOverview(ctx, doc, true);
+    drawGroupedAssets(ctx, doc, true);
   }
 
   // ===== 二、密码指引 =====
-  if (!doc.accessRemoved) {
+  if (showAmounts && !doc.accessRemoved) {
     newPage(ctx);
     drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "密码指引");
 
@@ -551,7 +941,7 @@ export async function generatePdf(
   }
 
   // ===== 三、SOP =====
-  if (!doc.sopRemoved) {
+  if (showAmounts && !doc.sopRemoved) {
     newPage(ctx);
     drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "紧急响应流程");
 
@@ -562,7 +952,7 @@ export async function generatePdf(
   }
 
   // ===== 四、自定义 =====
-  if (!doc.customRemoved && doc.customSections.length > 0) {
+  if (showAmounts && !doc.customRemoved && doc.customSections.length > 0) {
     newPage(ctx);
     drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "自定义章节");
 
@@ -581,7 +971,7 @@ export async function generatePdf(
 
   // ===== 页脚 =====
   const pages = pdf.getPages();
-  const footer = "家庭资产应急手册 · 机密文件";
+  const footer = `家庭资产应急手册 · ${modeLabel} · 机密文件`;
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i]!;
     p.drawLine({
@@ -595,12 +985,14 @@ export async function generatePdf(
     });
   }
 
-  // 嵌入草稿数据（便于将来直接导入此 PDF 继续编辑）
-  const draftBytes = new TextEncoder().encode(JSON.stringify(wrapDraft(doc)));
-  await pdf.attach(draftBytes, DRAFT_ATTACHMENT_NAME, {
-    mimeType: "application/json",
-    description: "family-asset-guide draft data",
-  });
+  if (showAmounts) {
+    // 夫妻版嵌入草稿数据，便于将来直接导入此 PDF 继续编辑；亲属版不嵌入，避免泄露完整明细。
+    const draftBytes = new TextEncoder().encode(JSON.stringify(wrapDraft(doc)));
+    await pdf.attach(draftBytes, DRAFT_ATTACHMENT_NAME, {
+      mimeType: "application/json",
+      description: "family-asset-guide draft data",
+    });
+  }
 
   // 加密
   pdf.encrypt({
@@ -614,9 +1006,10 @@ export async function generatePdf(
   return await pdf.save();
 }
 
-export async function downloadPdf(bytes: Uint8Array) {
+export async function downloadPdf(bytes: Uint8Array, mode: PdfOutputMode = "full") {
   const ts = new Date().toISOString().slice(0, 10);
-  const fileName = `家庭应急手册-${ts}.pdf`;
+  const suffix = mode === "full" ? "夫妻版" : "亲属版";
+  const fileName = `家庭应急手册-${suffix}-${ts}.pdf`;
   const blob = new Blob([bytes], { type: "application/pdf" });
 
   try {
