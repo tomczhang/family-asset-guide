@@ -862,6 +862,17 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
   return fetchWithCache("NotoSansSC-Regular.otf");
 }
 
+// 页面一加载就后台预拉字体并写入 Cache，保证用户随后断网也能离线生成 PDF。
+// 只预热网络/同源字体（系统字体走 queryLocalFonts、本地读取不需联网）。
+export async function prefetchFont(): Promise<void> {
+  for (const url of FONT_FALLBACK_URLS) {
+    try {
+      const bytes = await fetchWithCache(url);
+      if (isUsableFont(bytes)) return;
+    } catch {}
+  }
+}
+
 // ===================== Main =====================
 
 export async function generatePdf(

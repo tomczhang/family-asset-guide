@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppProvider, useAppState } from "./state/context";
 import { createMockDocument } from "./data/mock-data";
 import { useIsMobile } from "./hooks/useIsMobile";
@@ -11,7 +11,7 @@ import { CustomSectionEditor } from "./components/CustomSectionEditor";
 import { MobileStepperBar } from "./components/MobileStepperBar";
 import { MobileTocOverlay } from "./components/MobileTocOverlay";
 import { PasswordModal } from "./components/PasswordModal";
-import { generatePdf, downloadPdf } from "./pdf/generate";
+import { generatePdf, downloadPdf, prefetchFont } from "./pdf/generate";
 import type { PdfOutputMode } from "./pdf/generate";
 
 function AppContent() {
@@ -25,6 +25,11 @@ function AppContent() {
   const [showWechatTip, setShowWechatTip] = useState(false);
 
   const isWechat = /MicroMessenger/i.test(navigator.userAgent);
+
+  // 页面加载后立即后台预拉字体，趁联网时存入缓存，之后断网也能离线生成 PDF。
+  useEffect(() => {
+    void prefetchFont();
+  }, []);
 
   const handleOpenPdfModal = () => {
     if (isWechat) {
