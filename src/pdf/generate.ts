@@ -814,18 +814,31 @@ async function fetchWithCache(url: string): Promise<ArrayBuffer> {
   }
 }
 
+// 校验字体能否被 fontkit 正常排版。Windows 的微软雅黑（msyh.ttc）等 TTC 字体集合
+// 可以被 embedFont 接受，但排版时才抛 "this.font.layout is not a function"，需提前剔除。
+function isUsableFont(bytes: ArrayBuffer): boolean {
+  try {
+    const f = (fontkit as any).create(new Uint8Array(bytes));
+    return f && typeof f.layout === "function";
+  } catch {
+    return false;
+  }
+}
+
 async function loadSystemFont(): Promise<ArrayBuffer> {
   if ("queryLocalFonts" in window) {
     try {
       const fonts = await (window as any).queryLocalFonts();
-      for (const name of PREFERRED_FONTS) {
-        const match = fonts.find((f: any) => f.family === name && f.style === "Regular");
-        if (match) return (await match.blob()).arrayBuffer();
+      const candidates = [
+        ...PREFERRED_FONTS
+          .map((name) => fonts.find((f: any) => f.family === name && f.style === "Regular"))
+          .filter(Boolean),
+        ...fonts.filter((f: any) => f.style === "Regular" && /sc|cn|gb|hei|song|fang/i.test(f.family)),
+      ];
+      for (const match of candidates) {
+        const bytes = await (await match.blob()).arrayBuffer();
+        if (isUsableFont(bytes)) return bytes;
       }
-      const fallback = fonts.find(
-        (f: any) => f.style === "Regular" && /sc|cn|gb|hei|song|fang/i.test(f.family),
-      );
-      if (fallback) return (await fallback.blob()).arrayBuffer();
     } catch {}
   }
   try {
