@@ -796,7 +796,17 @@ const PREFERRED_FONTS = [
 ];
 
 const FONT_CACHE = "font-cache-v1";
+// Google 字体 CDN（海外快，国内常被墙，仅作最后兜底）
 const CDN_TTF = "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf";
+// 字体回退顺序，优先国内可达且较快的来源：
+//   1) jsDelivr（国内有 CDN 节点）拉取本仓库自带字体
+//   2) 站点同源自带字体（必达兜底）
+//   3) Google 字体 CDN（海外兜底）
+const FONT_FALLBACK_URLS = [
+  "https://cdn.jsdelivr.net/gh/tomczhang/family-asset-guide@main/public/NotoSansSC-Regular.ttf",
+  "NotoSansSC-Regular.ttf",
+  CDN_TTF,
+];
 
 async function fetchWithCache(url: string): Promise<ArrayBuffer> {
   try {
@@ -841,11 +851,15 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
       }
     } catch {}
   }
-  try {
-    return await fetchWithCache(CDN_TTF);
-  } catch {
-    return fetchWithCache("NotoSansSC-Regular.otf");
+  // 按国内友好的顺序逐个尝试网络/同源字体，校验可用才采用。
+  for (const url of FONT_FALLBACK_URLS) {
+    try {
+      const bytes = await fetchWithCache(url);
+      if (isUsableFont(bytes)) return bytes;
+    } catch {}
   }
+  // 全部失败时最后再试同源 OTF（体积更小）。
+  return fetchWithCache("NotoSansSC-Regular.otf");
 }
 
 // ===================== Main =====================
@@ -869,9 +883,9 @@ export async function generatePdf(
     onStatus?.("当前字体不兼容，正在下载备用字体…");
     let fallbackBytes: ArrayBuffer;
     try {
-      fallbackBytes = await fetchWithCache(CDN_TTF);
-    } catch {
       fallbackBytes = await fetchWithCache("NotoSansSC-Regular.ttf");
+    } catch {
+      fallbackBytes = await fetchWithCache(CDN_TTF);
     }
     font = await pdf.embedFont(fallbackBytes, { subset: false });
   }
