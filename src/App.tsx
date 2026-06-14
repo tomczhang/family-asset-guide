@@ -25,10 +25,21 @@ function AppContent() {
   const [showWechatTip, setShowWechatTip] = useState(false);
 
   const isWechat = /MicroMessenger/i.test(navigator.userAgent);
+  const [fontStatus, setFontStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [fontHintVisible, setFontHintVisible] = useState(true);
 
   // 页面加载后立即后台预拉字体，趁联网时存入缓存，之后断网也能离线生成 PDF。
+  // 同时把状态反馈给用户，让其知道何时可以安全断网。
   useEffect(() => {
-    void prefetchFont();
+    let cancelled = false;
+    prefetchFont().then((ok) => {
+      if (cancelled) return;
+      setFontStatus(ok ? "ready" : "error");
+      if (ok) window.setTimeout(() => setFontHintVisible(false), 4000);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleOpenPdfModal = () => {
@@ -81,6 +92,20 @@ function AppContent() {
   return (
     <>
       <Toolbar isMobile={isMobile} />
+      {fontHintVisible && (
+        <div className={`font-hint font-hint--${fontStatus}`} role="status">
+          {fontStatus === "loading" && "正在预加载字体，请保持联网…"}
+          {fontStatus === "ready" && "✓ 字体已就绪，现在可离线生成 PDF"}
+          {fontStatus === "error" && (
+            <>
+              ⚠ 字体未能预加载，生成 PDF 时请保持联网
+              <button type="button" className="font-hint-close" onClick={() => setFontHintVisible(false)}>
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <div className="app-layout">
         <main className="app-main">
           <div className="app-main-inner">

@@ -753,3 +753,56 @@ select.field-input {
     text-align: right;
   }
 }
+
+/* 字体预加载状态提示（让用户知道何时可以安全断网） */
+.font-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1.4;
+  background: #fff;
+  color: var(--stone-700);
+  border: 1px solid var(--stone-200);
+  box-shadow: 0 6px 20px rgba(28, 25, 23, 0.14);
+}
+
+.font-hint--ready {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.font-hint--error {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fcd34d;
+}
+
+.font-hint-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+
+.font-hint-close:hover {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .font-hint {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
