@@ -5,9 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--CSP_PLACEHOLDER-->
     <title>家庭资产应急手册</title>
+    <!-- 首屏加载占位样式：自包含，不依赖后置内联 CSS，确保 JS 下载/解析期间不白屏 -->
+    <style>
+      #app-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #fff;
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        color: #44403c;
+      }
+      #app-loader .al-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1c1917;
+      }
+      #app-loader .al-spin {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #e7e5e4;
+        border-top-color: #b45309;
+        border-radius: 50%;
+        animation: al-rot 0.8s linear infinite;
+      }
+      #app-loader .al-text {
+        font-size: 13px;
+        color: #78716c;
+        text-align: center;
+        max-width: 280px;
+        padding: 0 16px;
+      }
+      @keyframes al-rot {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="app-loader">
+        <div class="al-title">家庭资产应急手册</div>
+        <div class="al-spin"></div>
+        <div class="al-text">正在加载，请稍候…首次打开需下载页面资源</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
