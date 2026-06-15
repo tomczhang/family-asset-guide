@@ -799,11 +799,11 @@ const FONT_CACHE = "font-cache-v1";
 // Google 字体 CDN（海外快，国内常被墙，仅作最后兜底）
 const CDN_TTF = "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf";
 // 字体回退顺序，优先国内可达且较快的来源：
-//   1) jsDelivr（国内有 CDN 节点）拉取本仓库自带字体
+//   1) 阿里 CDN（g.alicdn.com，国内访问快）
 //   2) 站点同源自带字体（必达兜底）
 //   3) Google 字体 CDN（海外兜底）
 const FONT_FALLBACK_URLS = [
-  "https://cdn.jsdelivr.net/gh/tomczhang/family-asset-guide@main/public/NotoSansSC-Regular.ttf",
+  "https://g.alicdn.com/code/npm/@ali/rox-price/0.0.1/AlibabaSans102-Bd.ttf",
   "NotoSansSC-Regular.ttf",
   CDN_TTF,
 ];
