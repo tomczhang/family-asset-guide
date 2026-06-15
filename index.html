@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--CSP_PLACEHOLDER-->
+    <!-- 解析到此即开始并行下载字体（与主脚本并行、低优先级慢慢下），
+         用户可先填表，无需等待；随后 prefetchFont 的请求会复用此下载。 -->
+    <link
+      rel="preload"
+      as="fetch"
+      type="font/ttf"
+      crossorigin
+      fetchpriority="low"
+      href="https://static.refly.ai/landing/AlibabaPuHuiTi-3-45-Light.ttf"
+    />
     <title>家庭资产应急手册</title>
     <!-- 首屏加载占位样式：自包含，不依赖后置内联 CSS，确保 JS 下载/解析期间不白屏 -->
     <style>
