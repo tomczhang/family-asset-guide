@@ -790,11 +790,6 @@ function wrapText(text: string, font: PDFFont, size: number, maxW: number): stri
   return result;
 }
 
-const PREFERRED_FONTS = [
-  "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
-  "Noto Sans CJK SC", "Noto Sans SC", "STHeiti", "SimHei",
-];
-
 const FONT_CACHE = "font-cache-v1";
 // Google 字体 CDN（海外快，国内常被墙，仅作最后兜底）
 const CDN_TTF = "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf";
@@ -835,22 +830,9 @@ function isUsableFont(bytes: ArrayBuffer): boolean {
   }
 }
 
-async function loadSystemFont(): Promise<ArrayBuffer> {
-  if ("queryLocalFonts" in window) {
-    try {
-      const fonts = await (window as any).queryLocalFonts();
-      const candidates = [
-        ...PREFERRED_FONTS
-          .map((name) => fonts.find((f: any) => f.family === name && f.style === "Regular"))
-          .filter(Boolean),
-        ...fonts.filter((f: any) => f.style === "Regular" && /sc|cn|gb|hei|song|fang/i.test(f.family)),
-      ];
-      for (const match of candidates) {
-        const bytes = await (await match.blob()).arrayBuffer();
-        if (isUsableFont(bytes)) return bytes;
-      }
-    } catch {}
-  }
+async function loadFont(): Promise<ArrayBuffer> {
+  // 直接使用项目自带字体（阿里普惠体优先），不再探测系统字体，
+  // 避免浏览器弹出「允许访问本机字体」权限提示。
   // 按国内友好的顺序逐个尝试网络/同源字体，校验可用才采用。
   for (const url of FONT_FALLBACK_URLS) {
     try {
@@ -863,7 +845,6 @@ async function loadSystemFont(): Promise<ArrayBuffer> {
 }
 
 // 页面一加载就后台预拉字体并写入 Cache，保证用户随后断网也能离线生成 PDF。
-// 只预热网络/同源字体（系统字体走 queryLocalFonts、本地读取不需联网）。
 // 返回是否已成功缓存到可用字体，供 UI 提示「可否安全断网」。
 export async function prefetchFont(): Promise<boolean> {
   for (const url of FONT_FALLBACK_URLS) {
@@ -890,7 +871,7 @@ export async function generatePdf(
   pdf.registerFontkit(fontkit);
   let font: PDFFont;
   try {
-    const fontBytes = await loadSystemFont();
+    const fontBytes = await loadFont();
     font = await pdf.embedFont(fontBytes, { subset: false });
   } catch {
     onStatus?.("当前字体不兼容，正在下载备用字体…");
