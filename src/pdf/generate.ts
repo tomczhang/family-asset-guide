@@ -917,12 +917,15 @@ async function loadFont(): Promise<ArrayBuffer> {
 // onProgress 以 0~1 比例回调当前字体的下载进度，供 UI 显示进度条。
 // 返回是否已成功缓存到可用字体，供 UI 提示「可否安全断网」。
 export async function prefetchFont(onProgress?: (ratio: number) => void): Promise<boolean> {
-  // 同时触发 pdf-lib/fontkit 异步 chunk 的后台加载，使点击生成时已就绪。
-  await loadPdfEngine();
+  // 后台预热 pdf-lib/fontkit chunk（fire-and-forget，不阻塞字体下载与进度），
+  // 使点击生成时已就绪。预热失败也无妨，生成时会再次 loadPdfEngine。
+  void loadPdfEngine().catch(() => {});
+  // prefetch 只负责把字体下载进 Cache；可用性校验留给生成时的 loadFont（含兜底），
+  // 因此这里无需 fontkit，进度与「就绪」状态完全取决于字体下载本身。
   for (const url of FONT_FALLBACK_URLS) {
     try {
       const bytes = await fetchWithCache(url, onProgress);
-      if (isUsableFont(bytes)) return true;
+      if (bytes.byteLength > 0) return true;
     } catch {}
   }
   return false;

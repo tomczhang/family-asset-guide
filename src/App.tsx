@@ -35,11 +35,15 @@ function AppContent() {
     let cancelled = false;
     prefetchFont((ratio) => {
       if (!cancelled) setFontProgress(Math.round(ratio * 100));
-    }).then((ok) => {
-      if (cancelled) return;
-      setFontStatus(ok ? "ready" : "error");
-      if (ok) window.setTimeout(() => setFontHintVisible(false), 4000);
-    });
+    })
+      .then((ok) => {
+        if (cancelled) return;
+        setFontStatus(ok ? "ready" : "error");
+        if (ok) window.setTimeout(() => setFontHintVisible(false), 4000);
+      })
+      .catch(() => {
+        if (!cancelled) setFontStatus("error");
+      });
     return () => {
       cancelled = true;
     };
