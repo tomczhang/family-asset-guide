@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 function cspPlugin(): Plugin {
-  const cspTag = `<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' https://static.refly.ai https://fonts.gstatic.com; frame-src 'none'; object-src 'none';" />`;
+  const cspTag = `<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdn.jsdmirror.com; connect-src 'self' https://cdn.jsdmirror.com https://static.refly.ai https://fonts.gstatic.com; frame-src 'none'; object-src 'none';" />`;
   return {
     name: "inject-csp",
     transformIndexHtml: {

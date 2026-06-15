@@ -1,19 +1,33 @@
 import type { PDFPage, PDFFont, PDFDocument, Color } from "@cantoo/pdf-lib";
 import type { Asset, Document } from "../state/types";
 
-// pdf-lib 与 fontkit 体积大（合计约 580KB gzip）且仅在生成/解析 PDF 时才用到，
-// 改为动态 import，拆成独立异步 chunk，不进首屏。首次调用时按需加载并缓存。
+// pdf-lib 与 fontkit 体积大（合计约 580KB gzip）且仅在生成/解析 PDF 时才用到。
+// 优先从国内 CDN 按固定版本加载（jsDelivr 打包的自包含 ESM，版本不可变、永久
+// 缓存、国内快）；失败再回退到本地打包 chunk（同源，必达）。版本须与 package.json
+// 中安装的版本一致。
 type PdfLib = typeof import("@cantoo/pdf-lib");
+const CDN_PDFLIB = "https://cdn.jsdmirror.com/npm/@cantoo/pdf-lib@2.7.1/+esm";
+const CDN_FONTKIT = "https://cdn.jsdmirror.com/npm/@pdf-lib/fontkit@1.1.1/+esm";
 let _pdfLib: PdfLib | null = null;
 let _fontkit: any = null;
 async function loadPdfEngine(): Promise<{ PDFDocument: PdfLib["PDFDocument"]; fontkit: any }> {
   if (!_pdfLib || !_fontkit) {
-    const [pdfMod, fkMod] = await Promise.all([
-      import("@cantoo/pdf-lib"),
-      import("@pdf-lib/fontkit"),
-    ]);
-    _pdfLib = pdfMod;
-    _fontkit = fkMod.default;
+    try {
+      const [pdfMod, fkMod] = await Promise.all([
+        import(/* @vite-ignore */ CDN_PDFLIB),
+        import(/* @vite-ignore */ CDN_FONTKIT),
+      ]);
+      _pdfLib = pdfMod as PdfLib;
+      _fontkit = fkMod.default ?? fkMod;
+    } catch {
+      // CDN 不可达（网络/CSP）时回退到本地打包 chunk。
+      const [pdfMod, fkMod] = await Promise.all([
+        import("@cantoo/pdf-lib"),
+        import("@pdf-lib/fontkit"),
+      ]);
+      _pdfLib = pdfMod;
+      _fontkit = fkMod.default;
+    }
   }
   return { PDFDocument: _pdfLib!.PDFDocument, fontkit: _fontkit };
 }
