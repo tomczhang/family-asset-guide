@@ -803,18 +803,63 @@ const FONT_FALLBACK_URLS = [
   CDN_TTF,
 ];
 
-async function fetchWithCache(url: string): Promise<ArrayBuffer> {
+// 主字体（refly 跨域不暴露 Content-Length）的预估字节数，用于在读不到
+// Content-Length 时估算下载进度。reader 读取的是解码后字节，累计值与文件
+// 真实大小一致，故以此为分母准确。
+const PRIMARY_FONT_BYTES = 8650860;
+
+type ProgressFn = (ratio: number) => void;
+
+// 边读边累计字节，按 0~1 比例回调进度，最后合并为完整 ArrayBuffer。
+async function readWithProgress(
+  resp: Response,
+  fallbackTotal: number,
+  onProgress?: ProgressFn,
+): Promise<ArrayBuffer> {
+  const total = Number(resp.headers.get("Content-Length")) || fallbackTotal || 0;
+  if (!onProgress || !resp.body) {
+    const buf = await resp.arrayBuffer();
+    onProgress?.(1);
+    return buf;
+  }
+  const reader = resp.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    if (total) onProgress(Math.min(loaded / total, 0.99));
+  }
+  onProgress(1);
+  const out = new Uint8Array(loaded);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.length;
+  }
+  return out.buffer;
+}
+
+async function fetchWithCache(url: string, onProgress?: ProgressFn): Promise<ArrayBuffer> {
+  // 跨域 CDN 字体读不到 Content-Length 时，用预估值兜底算进度。
+  const fallbackTotal = /^https?:\/\//.test(url) ? PRIMARY_FONT_BYTES : 0;
   try {
     const cache = await caches.open(FONT_CACHE);
     const cached = await cache.match(url);
-    if (cached) return cached.arrayBuffer();
+    if (cached) {
+      onProgress?.(1);
+      return cached.arrayBuffer();
+    }
     const resp = await fetch(url);
     if (!resp.ok) throw new Error();
-    cache.put(url, resp.clone());
-    return resp.arrayBuffer();
+    const buf = await readWithProgress(resp, fallbackTotal, onProgress);
+    cache.put(url, new Response(buf, { headers: { "Content-Type": resp.headers.get("Content-Type") || "font/ttf" } }));
+    return buf;
   } catch {
     const resp = await fetch(url);
-    if (resp.ok) return resp.arrayBuffer();
+    if (resp.ok) return readWithProgress(resp, fallbackTotal, onProgress);
     throw new Error("无法加载字体文件。");
   }
 }
@@ -845,11 +890,12 @@ async function loadFont(): Promise<ArrayBuffer> {
 }
 
 // 页面一加载就后台预拉字体并写入 Cache，保证用户随后断网也能离线生成 PDF。
+// onProgress 以 0~1 比例回调当前字体的下载进度，供 UI 显示进度条。
 // 返回是否已成功缓存到可用字体，供 UI 提示「可否安全断网」。
-export async function prefetchFont(): Promise<boolean> {
+export async function prefetchFont(onProgress?: (ratio: number) => void): Promise<boolean> {
   for (const url of FONT_FALLBACK_URLS) {
     try {
-      const bytes = await fetchWithCache(url);
+      const bytes = await fetchWithCache(url, onProgress);
       if (isUsableFont(bytes)) return true;
     } catch {}
   }

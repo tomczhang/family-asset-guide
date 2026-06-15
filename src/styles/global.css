@@ -787,6 +787,23 @@ select.field-input {
   border-color: #fcd34d;
 }
 
+.font-hint-bar {
+  flex-shrink: 0;
+  width: 64px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--stone-200);
+  overflow: hidden;
+}
+
+.font-hint-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--amber-600);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
 .font-hint-close {
   border: none;
   background: transparent;
