@@ -1,6 +1,27 @@
-import { PDFDocument, rgb, type PDFPage, type PDFFont } from "@cantoo/pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
+import type { PDFPage, PDFFont, PDFDocument, Color } from "@cantoo/pdf-lib";
 import type { Asset, Document } from "../state/types";
+
+// pdf-lib 与 fontkit 体积大（合计约 580KB gzip）且仅在生成/解析 PDF 时才用到，
+// 改为动态 import，拆成独立异步 chunk，不进首屏。首次调用时按需加载并缓存。
+type PdfLib = typeof import("@cantoo/pdf-lib");
+let _pdfLib: PdfLib | null = null;
+let _fontkit: any = null;
+async function loadPdfEngine(): Promise<{ PDFDocument: PdfLib["PDFDocument"]; fontkit: any }> {
+  if (!_pdfLib || !_fontkit) {
+    const [pdfMod, fkMod] = await Promise.all([
+      import("@cantoo/pdf-lib"),
+      import("@pdf-lib/fontkit"),
+    ]);
+    _pdfLib = pdfMod;
+    _fontkit = fkMod.default;
+  }
+  return { PDFDocument: _pdfLib!.PDFDocument, fontkit: _fontkit };
+}
+
+// pdf-lib 的 rgb 仅返回一个颜色对象，本地实现以免为它把整个库拉进首屏。
+const rgb = (r: number, g: number, b: number): Color =>
+  ({ type: "RGB", red: r, green: g, blue: b }) as unknown as Color;
+
 import { ASSET_TYPE_LABELS, CURRENCY_LABELS } from "../state/types";
 import { wrapDraft, unwrapDraft } from "../state/document";
 import { formatCny, formatCoarseCny, groupAssetsByFilter, summarizeAssets } from "../state/asset-summary";
@@ -52,6 +73,7 @@ export async function extractDraftFromPdf(
   bytes: Uint8Array | ArrayBuffer,
   password: string,
 ): Promise<Document> {
+  const { PDFDocument } = await loadPdfEngine();
   let pdf: PDFDocument;
   try {
     pdf = await PDFDocument.load(bytes, { password });
@@ -866,9 +888,10 @@ async function fetchWithCache(url: string, onProgress?: ProgressFn): Promise<Arr
 
 // 校验字体能否被 fontkit 正常排版。Windows 的微软雅黑（msyh.ttc）等 TTC 字体集合
 // 可以被 embedFont 接受，但排版时才抛 "this.font.layout is not a function"，需提前剔除。
+// 调用前需确保 loadPdfEngine() 已完成（_fontkit 就绪）。
 function isUsableFont(bytes: ArrayBuffer): boolean {
   try {
-    const f = (fontkit as any).create(new Uint8Array(bytes));
+    const f = _fontkit.create(new Uint8Array(bytes));
     return f && typeof f.layout === "function";
   } catch {
     return false;
@@ -876,6 +899,7 @@ function isUsableFont(bytes: ArrayBuffer): boolean {
 }
 
 async function loadFont(): Promise<ArrayBuffer> {
+  await loadPdfEngine(); // 确保 _fontkit 就绪供 isUsableFont 使用
   // 直接使用项目自带字体（阿里普惠体优先），不再探测系统字体，
   // 避免浏览器弹出「允许访问本机字体」权限提示。
   // 按国内友好的顺序逐个尝试网络/同源字体，校验可用才采用。
@@ -893,6 +917,8 @@ async function loadFont(): Promise<ArrayBuffer> {
 // onProgress 以 0~1 比例回调当前字体的下载进度，供 UI 显示进度条。
 // 返回是否已成功缓存到可用字体，供 UI 提示「可否安全断网」。
 export async function prefetchFont(onProgress?: (ratio: number) => void): Promise<boolean> {
+  // 同时触发 pdf-lib/fontkit 异步 chunk 的后台加载，使点击生成时已就绪。
+  await loadPdfEngine();
   for (const url of FONT_FALLBACK_URLS) {
     try {
       const bytes = await fetchWithCache(url, onProgress);
@@ -913,6 +939,7 @@ export async function generatePdf(
   const mode = options.mode ?? "full";
   const caps = capsForMode(mode);
   const modeLabel = mode === "full" ? "夫妻版" : "亲属版";
+  const { PDFDocument, fontkit } = await loadPdfEngine();
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   let font: PDFFont;
