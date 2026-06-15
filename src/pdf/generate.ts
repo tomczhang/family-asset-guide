@@ -798,12 +798,17 @@ const PREFERRED_FONTS = [
 const FONT_CACHE = "font-cache-v1";
 // Google 字体 CDN（海外快，国内常被墙，仅作最后兜底）
 const CDN_TTF = "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf";
+// 阿里巴巴普惠体（含完整中文，常规字重，约 8.5MB）的 npm 包路径。
+// 阿里自家 g.alicdn.com 只镜像内部 registry，无此公共包，故走 jsDelivr 生态的国内镜像节点。
+const PUHUI_NPM = "npm/alibabapuhuiti-3-55-regular@1.0.0/AlibabaPuHuiTi-3-55-Regular.ttf";
 // 字体回退顺序，优先国内可达且较快的来源：
-//   1) jsDelivr（国内有 CDN 节点）拉取本仓库自带字体
-//   2) 站点同源自带字体（必达兜底）
-//   3) Google 字体 CDN（海外兜底）
+//   1) jsDelivr 国内镜像（有备案，国内节点快）拉取阿里普惠体
+//   2) Gcore 的 jsDelivr 镜像（国内有节点）作为第二个国内候选
+//   3) 站点同源自带字体（必达兜底，与上方为不同字体但同样含中文）
+//   4) Google 字体 CDN（海外兜底）
 const FONT_FALLBACK_URLS = [
-  "https://cdn.jsdelivr.net/gh/tomczhang/family-asset-guide@main/public/NotoSansSC-Regular.ttf",
+  "https://cdn.jsdmirror.com/" + PUHUI_NPM,
+  "https://gcore.jsdelivr.net/" + PUHUI_NPM,
   "NotoSansSC-Regular.ttf",
   CDN_TTF,
 ];
