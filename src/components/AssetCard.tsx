@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppState } from "../state/context";
-import { ASSET_TYPE_LABELS, CURRENCY_LABELS } from "../state/types";
 import type { AssetType, Currency, Asset } from "../state/types";
-import { getInstitutionsByType, getInstitutionById, DEFAULT_INSTITUTION } from "../data/institutions";
+import { getInstitutionsByType, getInstitutionById, getDefaultInstitutionId } from "../data/institutions";
 import {
-  ASSET_FILTERS,
+  ASSET_FILTER_IDS,
+  assetFilterLabel,
   defaultTypeForFilter,
   filterForAsset,
   formatCny,
@@ -13,6 +13,8 @@ import {
 } from "../state/asset-summary";
 import type { AssetFilter } from "../state/asset-summary";
 import type { ChartItem } from "../state/asset-summary";
+import type { Locale } from "../i18n/locale";
+import { t, assetTypeLabel, currencyLabel, assetTypeEntries, currencyEntries } from "../i18n";
 
 function mask(text: string): string {
   if (!text) return "";
@@ -20,9 +22,9 @@ function mask(text: string): string {
   return text[0] + "***" + text[text.length - 1];
 }
 
-function assetOwnerLabel(asset: Asset): string {
-  if (asset.type === "insurance") return asset.insuredPerson || "未填写被保人";
-  return asset.accountOwner || "未填写所有人";
+function assetOwnerLabel(asset: Asset, locale: Locale): string {
+  if (asset.type === "insurance") return asset.insuredPerson || t(locale, "asset.notFilledInsured");
+  return asset.accountOwner || t(locale, "asset.notFilledOwner");
 }
 
 function chartGradient(items: ChartItem[], total: number): string {
@@ -39,12 +41,14 @@ function OverviewChart({
   title,
   subtitle,
   ariaLabel,
+  totalLabel,
   items,
   privacyMode,
 }: {
   title: string;
   subtitle: string;
   ariaLabel: string;
+  totalLabel: string;
   items: ChartItem[];
   privacyMode: boolean;
 }) {
@@ -64,7 +68,7 @@ function OverviewChart({
           aria-label={ariaLabel}
         >
           <div className="asset-pie-center">
-            <span>合计</span>
+            <span>{totalLabel}</span>
             <strong>{privacyMode ? "¥***" : formatCny(total)}</strong>
           </div>
         </div>
@@ -95,32 +99,38 @@ function OverviewChart({
 function AssetOverview({
   assets,
   privacyMode,
+  locale,
 }: {
   assets: Asset[];
   privacyMode: boolean;
+  locale: Locale;
 }) {
-  const summary = summarizeAssets(assets);
+  const summary = summarizeAssets(assets, locale);
+  const totalLabel = t(locale, "asset.chartTotal");
 
   return (
     <div className="asset-overview-grid">
       <OverviewChart
-        title="资产分布概览"
-        subtitle="只统计股票账户现金、银行存款、股票和不动产；欠款只提醒，不进入总额。"
-        ariaLabel="资产分布饼图"
+        title={t(locale, "asset.overview1Title")}
+        subtitle={t(locale, "asset.overview1Subtitle")}
+        ariaLabel={t(locale, "asset.overview1Aria")}
+        totalLabel={totalLabel}
         items={summary.allocationItems}
         privacyMode={privacyMode}
       />
       <OverviewChart
-        title="中美资产分布"
-        subtitle="美股和港股账户归海外资产，其他资产归中国资产。"
-        ariaLabel="中美资产分布饼图"
+        title={t(locale, "asset.overview2Title")}
+        subtitle={t(locale, "asset.overview2Subtitle")}
+        ariaLabel={t(locale, "asset.overview2Aria")}
+        totalLabel={totalLabel}
         items={summary.regionItems}
         privacyMode={privacyMode}
       />
       <OverviewChart
-        title="股票账户来源拆分"
-        subtitle="区分公司授予股票/现金与自购股票，基金不纳入这张来源图。"
-        ariaLabel="股票账户来源拆分饼图"
+        title={t(locale, "asset.overview3Title")}
+        subtitle={t(locale, "asset.overview3Subtitle")}
+        ariaLabel={t(locale, "asset.overview3Aria")}
+        totalLabel={totalLabel}
         items={summary.stockSourceItems}
         privacyMode={privacyMode}
       />
@@ -132,12 +142,14 @@ function CollapsedCard({
   asset,
   index,
   privacyMode,
+  locale,
   onEdit,
   onDelete,
 }: {
   asset: Asset;
   index: number;
   privacyMode: boolean;
+  locale: Locale;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -149,17 +161,17 @@ function CollapsedCard({
     ? asset.estimatedValue.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
     : "";
   const value = formatted ? `${symbol}${formatted}` : "—";
-  const owner = assetOwnerLabel(asset);
+  const owner = assetOwnerLabel(asset, locale);
 
   return (
     <div className="card collapsed-card">
       <div className="collapsed-row">
         <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
         <span className="collapsed-type">
-          {ASSET_TYPE_LABELS[asset.type]}
+          {assetTypeLabel(locale, asset.type)}
         </span>
         <span className="collapsed-name">
-          {asset.institution || "未选择机构"}
+          {asset.institution || t(locale, "asset.noInstitution")}
         </span>
         <span className="collapsed-acct">
           {asset.accountNumber ? (privacyMode ? mask(asset.accountNumber) : asset.accountNumber) : "—"}
@@ -172,10 +184,10 @@ function CollapsedCard({
         </span>
         <span className="collapsed-actions">
           <button className="btn btn-ghost btn-sm" onClick={onEdit}>
-            编辑
+            {t(locale, "common.edit")}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={onDelete}>
-            删除
+            {t(locale, "common.delete")}
           </button>
         </span>
       </div>
@@ -184,7 +196,7 @@ function CollapsedCard({
 }
 
 export function AssetEditor() {
-  const { doc, dispatch, privacyMode } = useAppState();
+  const { doc, dispatch, privacyMode, locale } = useAppState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<AssetFilter>("all");
   const prevCountRef = useRef(doc.assets.length);
@@ -206,8 +218,8 @@ export function AssetEditor() {
   };
 
   const handleTypeChange = (assetId: string, newType: AssetType) => {
-    const defaultInstId = DEFAULT_INSTITUTION[newType];
-    const inst = defaultInstId ? getInstitutionById(defaultInstId) : undefined;
+    const defaultInstId = getDefaultInstitutionId(newType, locale);
+    const inst = defaultInstId ? getInstitutionById(defaultInstId, locale) : undefined;
     dispatch({
       type: "UPDATE_ASSET",
       id: assetId,
@@ -238,7 +250,7 @@ export function AssetEditor() {
       });
       return;
     }
-    const inst = getInstitutionById(institutionId);
+    const inst = getInstitutionById(institutionId, locale);
     if (inst) {
       dispatch({
         type: "UPDATE_ASSET",
@@ -258,14 +270,14 @@ export function AssetEditor() {
     dispatch({ type: "ADD_ASSET", assetType: defaultTypeForFilter(activeFilter) });
   };
 
-  const summary = summarizeAssets(doc.assets);
+  const summary = summarizeAssets(doc.assets, locale);
   const totalFormatted = summary.totalCny !== 0
     ? `${summary.totalCny < 0 ? "-" : ""}¥${Math.abs(Math.round(summary.totalCny)).toLocaleString()}`
     : "";
-  const filterCounts = ASSET_FILTERS.reduce<Record<AssetFilter, number>>((acc, filter) => {
-    acc[filter.id] = filter.id === "all"
+  const filterCounts = ASSET_FILTER_IDS.reduce<Record<AssetFilter, number>>((acc, id) => {
+    acc[id] = id === "all"
       ? doc.assets.length
-      : doc.assets.filter((asset) => filterForAsset(asset.type) === filter.id).length;
+      : doc.assets.filter((asset) => filterForAsset(asset.type) === id).length;
     return acc;
   }, {
     all: 0,
@@ -279,54 +291,56 @@ export function AssetEditor() {
   const visibleAssets = activeFilter === "all"
     ? doc.assets
     : doc.assets.filter((asset) => filterForAsset(asset.type) === activeFilter);
-  const currentFilterLabel = ASSET_FILTERS.find((filter) => filter.id === activeFilter)?.label ?? "资产";
+  const currentFilterLabel = activeFilter === "all"
+    ? t(locale, "asset.fallbackName")
+    : assetFilterLabel(activeFilter, locale);
 
   return (
     <section className="section" id="chapter-assets" ref={sectionRef} onClick={handleSectionClick}>
       <div className="section-header">
-        <span className="section-badge">资产清单</span>
+        <span className="section-badge">{t(locale, "asset.badge")}</span>
         {totalFormatted && (
-          <span style={{ marginLeft: "auto", fontSize: 14, fontWeight: 600, color: "var(--stone-800)", fontFamily: "var(--font-mono)" }} title="只统计股票账户现金、银行存款、股票和不动产">
-            总计 {privacyMode ? "¥***" : totalFormatted}
-            {summary.hasInsurance && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--stone-400)", marginLeft: 6, fontFamily: "var(--font-sans)" }}>不含保单</span>}
-            {summary.hasDebt && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--stone-400)", marginLeft: 6, fontFamily: "var(--font-sans)" }}>欠款仅提醒</span>}
+          <span style={{ marginLeft: "auto", fontSize: 14, fontWeight: 600, color: "var(--stone-800)", fontFamily: "var(--font-mono)" }} title={t(locale, "asset.totalTitle")}>
+            {t(locale, "asset.total")} {privacyMode ? "¥***" : totalFormatted}
+            {summary.hasInsurance && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--stone-400)", marginLeft: 6, fontFamily: "var(--font-sans)" }}>{t(locale, "asset.excludeInsurance")}</span>}
+            {summary.hasDebt && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--stone-400)", marginLeft: 6, fontFamily: "var(--font-sans)" }}>{t(locale, "asset.debtReminder")}</span>}
           </span>
         )}
       </div>
       <div className="section-body">
-        <AssetOverview assets={doc.assets} privacyMode={privacyMode} />
+        <AssetOverview assets={doc.assets} privacyMode={privacyMode} locale={locale} />
 
-        <div className="asset-tabs" role="tablist" aria-label="资产类型筛选">
-          {ASSET_FILTERS.map((filter) => (
+        <div className="asset-tabs" role="tablist" aria-label={t(locale, "asset.filterAria")}>
+          {ASSET_FILTER_IDS.map((id) => (
             <button
-              key={filter.id}
+              key={id}
               type="button"
               role="tab"
-              aria-selected={activeFilter === filter.id}
-              className={`asset-tab${activeFilter === filter.id ? " asset-tab--active" : ""}`}
-              onClick={() => setActiveFilter(filter.id)}
+              aria-selected={activeFilter === id}
+              className={`asset-tab${activeFilter === id ? " asset-tab--active" : ""}`}
+              onClick={() => setActiveFilter(id)}
             >
-              <span>{filter.label}</span>
-              <span className="asset-tab-count">{filterCounts[filter.id]}</span>
+              <span>{assetFilterLabel(id, locale)}</span>
+              <span className="asset-tab-count">{filterCounts[id]}</span>
             </button>
           ))}
         </div>
 
         {visibleAssets.length === 0 && (
           <div className="asset-empty-state">
-            暂无{activeFilter === "all" ? "资产" : currentFilterLabel}
+            {t(locale, "asset.emptyPrefix")}{activeFilter === "all" ? t(locale, "asset.fallbackName") : currentFilterLabel}
           </div>
         )}
 
         {visibleAssets.length > 0 && (
           <div className="asset-list-header" aria-hidden="true">
-            <span>序号</span>
-            <span>类型</span>
-            <span>机构</span>
-            <span>账号</span>
-            <span>所有人</span>
-            <span>估值</span>
-            <span>操作</span>
+            <span>{t(locale, "asset.listSeq")}</span>
+            <span>{t(locale, "asset.listType")}</span>
+            <span>{t(locale, "asset.listInstitution")}</span>
+            <span>{t(locale, "asset.listAccount")}</span>
+            <span>{t(locale, "asset.listOwner")}</span>
+            <span>{t(locale, "asset.listValue")}</span>
+            <span>{t(locale, "asset.listActions")}</span>
           </div>
         )}
 
@@ -338,13 +352,14 @@ export function AssetEditor() {
                 asset={asset}
                 index={i}
                 privacyMode={privacyMode}
+                locale={locale}
                 onEdit={() => setExpandedId(asset.id)}
                 onDelete={() => dispatch({ type: "REMOVE_ASSET", id: asset.id })}
               />
             );
           }
 
-          const institutions = getInstitutionsByType(asset.type);
+          const institutions = getInstitutionsByType(asset.type, locale);
           const isCustom = asset.institutionId === "";
           const isDebt = asset.type === "debt";
           const isStock = isStockAccount(asset.type);
@@ -358,25 +373,25 @@ export function AssetEditor() {
                     className="btn btn-ghost btn-sm"
                     onClick={() => setExpandedId(null)}
                   >
-                    收起
+                    {t(locale, "common.collapse")}
                   </button>
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => dispatch({ type: "REMOVE_ASSET", id: asset.id })}
                   >
-                    删除
+                    {t(locale, "common.delete")}
                   </button>
                 </div>
               </div>
               <div className="field-group">
                 <div className="field">
-                  <label className="field-label">资产类型</label>
+                  <label className="field-label">{t(locale, "asset.fType")}</label>
                   <select
                     className="field-input"
                     value={asset.type}
                     onChange={(e) => handleTypeChange(asset.id, e.target.value as AssetType)}
                   >
-                    {Object.entries(ASSET_TYPE_LABELS).map(([k, v]) => (
+                    {assetTypeEntries(locale).map(([k, v]) => (
                       <option key={k} value={k}>
                         {v}
                       </option>
@@ -384,7 +399,7 @@ export function AssetEditor() {
                   </select>
                 </div>
                 <div className="field">
-                  <label className="field-label">机构</label>
+                  <label className="field-label">{t(locale, "asset.fInstitution")}</label>
                   {institutions.length > 0 ? (
                     <select
                       className="field-input"
@@ -396,12 +411,12 @@ export function AssetEditor() {
                           {inst.name}
                         </option>
                       ))}
-                      <option value="">其他（手动填写）</option>
+                      <option value="">{t(locale, "asset.instOther")}</option>
                     </select>
                   ) : (
                     <input
                       className="field-input"
-                      placeholder="机构名称"
+                      placeholder={t(locale, "asset.fInstitutionNamePlaceholder")}
                       value={asset.institution}
                       onChange={(e) =>
                         dispatch({
@@ -420,10 +435,10 @@ export function AssetEditor() {
               {isCustom && institutions.length > 0 && (
                 <div className="field-group">
                   <div className="field">
-                    <label className="field-label">机构名称</label>
+                    <label className="field-label">{t(locale, "asset.fInstitutionName")}</label>
                     <input
                       className="field-input"
-                      placeholder="机构名称"
+                      placeholder={t(locale, "asset.fInstitutionNamePlaceholder")}
                       value={asset.institution}
                       onChange={(e) =>
                         dispatch({
@@ -437,10 +452,10 @@ export function AssetEditor() {
                     />
                   </div>
                   <div className="field">
-                    <label className="field-label">登录网址</label>
+                    <label className="field-label">{t(locale, "asset.fLoginUrl")}</label>
                     <input
                       className="field-input"
-                      placeholder="https://..."
+                      placeholder={t(locale, "asset.fLoginUrlPlaceholder")}
                       value={asset.loginUrl}
                       onChange={(e) =>
                         dispatch({
@@ -459,10 +474,10 @@ export function AssetEditor() {
               {isCustom && institutions.length > 0 && (
                 <div className="field-group">
                   <div className="field">
-                    <label className="field-label">联系电话</label>
+                    <label className="field-label">{t(locale, "asset.fContactPhone")}</label>
                     <input
                       className="field-input"
-                      placeholder="客服热线"
+                      placeholder={t(locale, "asset.fContactPhonePlaceholder")}
                       value={asset.contactPhone}
                       onChange={(e) =>
                         dispatch({
@@ -476,10 +491,10 @@ export function AssetEditor() {
                     />
                   </div>
                   <div className="field">
-                    <label className="field-label">APP 下载</label>
+                    <label className="field-label">{t(locale, "asset.fAppDownload")}</label>
                     <input
                       className="field-input"
-                      placeholder="下载方式或链接"
+                      placeholder={t(locale, "asset.fAppDownloadPlaceholder")}
                       value={asset.appDownload}
                       onChange={(e) =>
                         dispatch({
@@ -498,10 +513,10 @@ export function AssetEditor() {
               {asset.type !== "insurance" && (
                 <div className="field-group full">
                   <div className="field">
-                    <label className="field-label">账户所有人</label>
+                    <label className="field-label">{t(locale, "asset.fAccountOwner")}</label>
                     <input
                       className="field-input"
-                      placeholder="例：张伟 / 张明 / 夫妻共同"
+                      placeholder={t(locale, "asset.fAccountOwnerPlaceholder")}
                       value={asset.accountOwner}
                       onChange={(e) =>
                         dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { accountOwner: e.target.value } })
@@ -516,19 +531,19 @@ export function AssetEditor() {
               {!isCustom && (
                 <div className="field-group" style={{ opacity: 0.75 }}>
                   <div className="field" style={{ flex: 1 }}>
-                    <label className="field-label">网址</label>
+                    <label className="field-label">{t(locale, "asset.fUrl")}</label>
                     <span style={{ fontSize: 13, color: "var(--stone-600)", wordBreak: "break-all" }}>
                       {asset.loginUrl}
                     </span>
                   </div>
                   <div className="field">
-                    <label className="field-label">电话</label>
+                    <label className="field-label">{t(locale, "asset.fPhone")}</label>
                     <span style={{ fontSize: 13, color: "var(--stone-600)" }}>
                       {asset.contactPhone}
                     </span>
                   </div>
                   <div className="field">
-                    <label className="field-label">APP</label>
+                    <label className="field-label">{t(locale, "asset.fApp")}</label>
                     <span style={{ fontSize: 13, color: "var(--stone-600)" }}>
                       {asset.appDownload}
                     </span>
@@ -539,10 +554,10 @@ export function AssetEditor() {
               {institutions.length === 0 && (
                 <div className="field-group">
                   <div className="field">
-                    <label className="field-label">登录网址</label>
+                    <label className="field-label">{t(locale, "asset.fLoginUrl")}</label>
                     <input
                       className="field-input"
-                      placeholder="https://..."
+                      placeholder={t(locale, "asset.fLoginUrlPlaceholder")}
                       value={asset.loginUrl}
                       onChange={(e) =>
                         dispatch({
@@ -556,10 +571,10 @@ export function AssetEditor() {
                     />
                   </div>
                   <div className="field">
-                    <label className="field-label">联系电话</label>
+                    <label className="field-label">{t(locale, "asset.fContactPhone")}</label>
                     <input
                       className="field-input"
-                      placeholder="客服热线"
+                      placeholder={t(locale, "asset.fContactPhonePlaceholder")}
                       value={asset.contactPhone}
                       onChange={(e) =>
                         dispatch({
@@ -579,10 +594,10 @@ export function AssetEditor() {
                 <>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">险种</label>
+                      <label className="field-label">{t(locale, "asset.fInsuranceKind")}</label>
                       <input
                         className="field-input"
-                        placeholder="例：定期寿险、重疾险、医疗险"
+                        placeholder={t(locale, "asset.fInsuranceKindPlaceholder")}
                         value={asset.insuranceKind}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { insuranceKind: e.target.value } })
@@ -592,10 +607,10 @@ export function AssetEditor() {
                       />
                     </div>
                     <div className="field">
-                      <label className="field-label">保单号</label>
+                      <label className="field-label">{t(locale, "asset.fPolicyNumber")}</label>
                       <input
                         className="field-input"
-                        placeholder="保单编号"
+                        placeholder={t(locale, "asset.fPolicyNumberPlaceholder")}
                         value={asset.accountNumber}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { accountNumber: e.target.value } })
@@ -607,7 +622,7 @@ export function AssetEditor() {
                   </div>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">理赔额</label>
+                      <label className="field-label">{t(locale, "asset.fClaimAmount")}</label>
                       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                         <select
                           className="field-input"
@@ -617,14 +632,14 @@ export function AssetEditor() {
                             dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { currency: e.target.value as Currency } })
                           }
                         >
-                          {Object.entries(CURRENCY_LABELS).map(([k, v]) => (
+                          {currencyEntries(locale).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
                           ))}
                         </select>
                         <input
                           className="field-input"
                           style={{ flex: 1 }}
-                          placeholder="保额"
+                          placeholder={t(locale, "asset.fClaimAmountPlaceholder")}
                           value={asset.estimatedValue}
                           onChange={(e) =>
                             dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { estimatedValue: e.target.value } })
@@ -635,10 +650,10 @@ export function AssetEditor() {
                       </div>
                     </div>
                     <div className="field">
-                      <label className="field-label">被保人</label>
+                      <label className="field-label">{t(locale, "asset.fInsuredPerson")}</label>
                       <input
                         className="field-input"
-                        placeholder="被保险人姓名"
+                        placeholder={t(locale, "asset.fInsuredPersonPlaceholder")}
                         value={asset.insuredPerson}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { insuredPerson: e.target.value } })
@@ -650,10 +665,10 @@ export function AssetEditor() {
                   </div>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">缴费年限</label>
+                      <label className="field-label">{t(locale, "asset.fPaymentYears")}</label>
                       <input
                         className="field-input"
-                        placeholder="例：20年"
+                        placeholder={t(locale, "asset.fPaymentYearsPlaceholder")}
                         value={asset.paymentYears}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { paymentYears: e.target.value } })
@@ -663,7 +678,7 @@ export function AssetEditor() {
                       />
                     </div>
                     <div className="field">
-                      <label className="field-label">是否还在缴费</label>
+                      <label className="field-label">{t(locale, "asset.fStillPaying")}</label>
                       <select
                         className="field-input"
                         value={asset.stillPaying ? "yes" : "no"}
@@ -671,8 +686,8 @@ export function AssetEditor() {
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { stillPaying: e.target.value === "yes" } })
                         }
                       >
-                        <option value="yes">缴费中</option>
-                        <option value="no">已缴清</option>
+                        <option value="yes">{t(locale, "asset.paying")}</option>
+                        <option value="no">{t(locale, "asset.paidUp")}</option>
                       </select>
                     </div>
                   </div>
@@ -681,10 +696,10 @@ export function AssetEditor() {
                 <>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">登录用户名</label>
+                      <label className="field-label">{t(locale, "asset.fLoginUsername")}</label>
                       <input
                         className="field-input"
-                        placeholder="网银用户名（可选）"
+                        placeholder={t(locale, "asset.fLoginUsernameBankPlaceholder")}
                         value={asset.loginUsername}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { loginUsername: e.target.value } })
@@ -694,10 +709,10 @@ export function AssetEditor() {
                       />
                     </div>
                     <div className="field">
-                      <label className="field-label">银行账号</label>
+                      <label className="field-label">{t(locale, "asset.fBankAccount")}</label>
                       <input
                         className="field-input"
-                        placeholder="银行卡号"
+                        placeholder={t(locale, "asset.fBankAccountPlaceholder")}
                         value={asset.accountNumber}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { accountNumber: e.target.value } })
@@ -709,7 +724,7 @@ export function AssetEditor() {
                   </div>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">余额</label>
+                      <label className="field-label">{t(locale, "asset.fBalance")}</label>
                       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                         <select
                           className="field-input"
@@ -719,14 +734,14 @@ export function AssetEditor() {
                             dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { currency: e.target.value as Currency } })
                           }
                         >
-                          {Object.entries(CURRENCY_LABELS).map(([k, v]) => (
+                          {currencyEntries(locale).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
                           ))}
                         </select>
                         <input
                           className="field-input"
                           style={{ flex: 1 }}
-                          placeholder="金额"
+                          placeholder={t(locale, "asset.fAmountPlaceholder")}
                           value={asset.estimatedValue}
                           onChange={(e) =>
                             dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { estimatedValue: e.target.value } })
@@ -737,10 +752,10 @@ export function AssetEditor() {
                       </div>
                     </div>
                     <div className="field">
-                      <label className="field-label">存款类型</label>
+                      <label className="field-label">{t(locale, "asset.fDepositType")}</label>
                       <input
                         className="field-input"
-                        placeholder="例：定期存款、活期、大额存单"
+                        placeholder={t(locale, "asset.fDepositTypePlaceholder")}
                         value={asset.assetDetail}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { assetDetail: e.target.value } })
@@ -755,10 +770,10 @@ export function AssetEditor() {
                 <>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">{isDebt ? "合同/贷款编号" : "账户号码"}</label>
+                      <label className="field-label">{isDebt ? t(locale, "asset.fContractNumber") : t(locale, "asset.fAccountNumber")}</label>
                       <input
                         className="field-input"
-                        placeholder={isDebt ? "借款合同号 / 贷款账号" : "账户编号"}
+                        placeholder={isDebt ? t(locale, "asset.fContractNumberPlaceholder") : t(locale, "asset.fAccountNumberPlaceholder")}
                         value={asset.accountNumber}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { accountNumber: e.target.value } })
@@ -768,7 +783,7 @@ export function AssetEditor() {
                       />
                     </div>
                     <div className="field">
-                      <label className="field-label">{isDebt ? "欠款余额" : isStock ? "账户总估值" : "估值"}</label>
+                      <label className="field-label">{isDebt ? t(locale, "asset.fDebtBalance") : isStock ? t(locale, "asset.fAccountTotalValue") : t(locale, "asset.fValue")}</label>
                       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                         <select
                           className="field-input"
@@ -778,14 +793,14 @@ export function AssetEditor() {
                             dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { currency: e.target.value as Currency } })
                           }
                         >
-                          {Object.entries(CURRENCY_LABELS).map(([k, v]) => (
+                          {currencyEntries(locale).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
                           ))}
                         </select>
                         <input
                           className="field-input"
                           style={{ flex: 1 }}
-                          placeholder={isDebt ? "剩余未还金额" : isStock ? "股票账户总金额" : "金额"}
+                          placeholder={isDebt ? t(locale, "asset.fDebtRemainingPlaceholder") : isStock ? t(locale, "asset.fStockTotalPlaceholder") : t(locale, "asset.fAmountPlaceholder")}
                           value={asset.estimatedValue}
                           onChange={(e) =>
                             dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { estimatedValue: e.target.value } })
@@ -798,10 +813,10 @@ export function AssetEditor() {
                   </div>
                   <div className="field-group full">
                     <div className="field">
-                      <label className="field-label">{isDebt ? "欠款说明" : "资产说明"}</label>
+                      <label className="field-label">{isDebt ? t(locale, "asset.fDebtDetail") : t(locale, "asset.fAssetDetail")}</label>
                       <input
                         className="field-input"
-                        placeholder={isDebt ? "例：房贷尾款、亲友借款" : "例：纳指ETF基金、定期存款、自住房"}
+                        placeholder={isDebt ? t(locale, "asset.fDebtDetailPlaceholder") : t(locale, "asset.fAssetDetailPlaceholder")}
                         value={asset.assetDetail}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { assetDetail: e.target.value } })
@@ -815,10 +830,10 @@ export function AssetEditor() {
                     <>
                       <div className="field-group">
                         <div className="field">
-                          <label className="field-label">账户现金</label>
+                          <label className="field-label">{t(locale, "asset.fCashValue")}</label>
                           <input
                             className="field-input"
-                            placeholder="股票账户内现金余额"
+                            placeholder={t(locale, "asset.fCashValuePlaceholder")}
                             value={asset.cashValue}
                             onChange={(e) =>
                               dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { cashValue: e.target.value } })
@@ -828,10 +843,10 @@ export function AssetEditor() {
                           />
                         </div>
                         <div className="field">
-                          <label className="field-label">公司授予股票</label>
+                          <label className="field-label">{t(locale, "asset.fCompanyStock")}</label>
                           <input
                             className="field-input"
-                            placeholder={`按${CURRENCY_LABELS[asset.currency]}填写`}
+                            placeholder={t(locale, "asset.fCompanyStockPlaceholder", { currency: currencyLabel(locale, asset.currency) })}
                             value={asset.companyGrantedStockValue}
                             onChange={(e) =>
                               dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { companyGrantedStockValue: e.target.value } })
@@ -845,10 +860,10 @@ export function AssetEditor() {
                   )}
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">登录用户名</label>
+                      <label className="field-label">{t(locale, "asset.fLoginUsername")}</label>
                       <input
                         className="field-input"
-                        placeholder="用户名 / 邮箱 / 手机号"
+                        placeholder={t(locale, "asset.fLoginUsernamePlaceholder")}
                         value={asset.loginUsername}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { loginUsername: e.target.value } })
@@ -860,10 +875,10 @@ export function AssetEditor() {
                   </div>
                   <div className="field-group">
                     <div className="field">
-                      <label className="field-label">注册邮箱</label>
+                      <label className="field-label">{t(locale, "asset.fRegisterEmail")}</label>
                       <input
                         className="field-input"
-                        placeholder="example@email.com"
+                        placeholder={t(locale, "asset.fRegisterEmailPlaceholder")}
                         value={asset.registerEmail}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { registerEmail: e.target.value } })
@@ -873,10 +888,10 @@ export function AssetEditor() {
                       />
                     </div>
                     <div className="field">
-                      <label className="field-label">绑定手机</label>
+                      <label className="field-label">{t(locale, "asset.fBindPhone")}</label>
                       <input
                         className="field-input"
-                        placeholder="138xxxx1234"
+                        placeholder={t(locale, "asset.fBindPhonePlaceholder")}
                         value={asset.bindPhone}
                         onChange={(e) =>
                           dispatch({ type: "UPDATE_ASSET", id: asset.id, patch: { bindPhone: e.target.value } })
@@ -890,7 +905,7 @@ export function AssetEditor() {
               )}
               <div className="field-group">
                 <div className="field">
-                  <label className="field-label">是否指定受益人</label>
+                  <label className="field-label">{t(locale, "asset.fHasBeneficiary")}</label>
                   <select
                     className="field-input"
                     value={asset.hasBeneficiary ? "yes" : "no"}
@@ -902,16 +917,16 @@ export function AssetEditor() {
                       })
                     }
                   >
-                    <option value="no">未指定</option>
-                    <option value="yes">已指定</option>
+                    <option value="no">{t(locale, "asset.notDesignated")}</option>
+                    <option value="yes">{t(locale, "asset.designated")}</option>
                   </select>
                 </div>
                 {asset.hasBeneficiary && (
                   <div className="field">
-                    <label className="field-label">受益人</label>
+                    <label className="field-label">{t(locale, "asset.fBeneficiary")}</label>
                     <input
                       className="field-input"
-                      placeholder="例：配偶 张丽"
+                      placeholder={t(locale, "asset.fBeneficiaryPlaceholder")}
                       value={asset.beneficiary}
                       onChange={(e) =>
                         dispatch({
@@ -928,11 +943,11 @@ export function AssetEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">备注</label>
+                  <label className="field-label">{t(locale, "asset.fNotes")}</label>
                   <textarea
                     className="field-input"
                     rows={2}
-                    placeholder="补充说明"
+                    placeholder={t(locale, "asset.fNotesPlaceholder")}
                     value={asset.notes}
                     onChange={(e) =>
                       dispatch({
@@ -951,7 +966,7 @@ export function AssetEditor() {
         })}
 
         <button className="btn btn-secondary" onClick={handleAdd}>
-          + 添加{activeFilter === "all" ? "资产" : currentFilterLabel}
+          {t(locale, "asset.addPrefix")}{activeFilter === "all" ? t(locale, "asset.fallbackName") : currentFilterLabel}
         </button>
       </div>
     </section>

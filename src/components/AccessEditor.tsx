@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppState } from "../state/context";
-import type { SealedEnvelope, TwoFactorMethod } from "../state/types";
-import { ASSET_TYPE_LABELS } from "../state/types";
+import type { SealedEnvelope, TwoFactorMethod, AssetType } from "../state/types";
+import type { Locale } from "../i18n/locale";
+import { t, assetTypeLabel } from "../i18n";
 
-function assetDisplayName(asset: { institution: string; type: string; accountNumber: string }, index: number): string {
-  const name = asset.institution || ASSET_TYPE_LABELS[asset.type as keyof typeof ASSET_TYPE_LABELS] || asset.type;
+function assetDisplayName(
+  asset: { institution: string; type: string; accountNumber: string },
+  index: number,
+  locale: Locale,
+): string {
+  const name = asset.institution || assetTypeLabel(locale, asset.type as AssetType) || asset.type;
   const suffix = asset.accountNumber ? ` (${asset.accountNumber})` : ` #${index + 1}`;
   return `${name}${suffix}`;
 }
@@ -13,12 +18,14 @@ function CollapsedSeal({
   seal,
   index,
   sealLabel,
+  locale,
   onEdit,
   onDelete,
 }: {
   seal: SealedEnvelope;
   index: number;
   sealLabel: string;
+  locale: Locale;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -33,15 +40,15 @@ function CollapsedSeal({
           {seal.location || "—"}
         </span>
         <span style={{ marginLeft: "auto", flexShrink: 0 }} />
-        <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0, whiteSpace: "nowrap" }} onClick={onEdit}>编辑</button>
-        <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0, whiteSpace: "nowrap" }} onClick={onDelete}>删除</button>
+        <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0, whiteSpace: "nowrap" }} onClick={onEdit}>{t(locale, "common.edit")}</button>
+        <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0, whiteSpace: "nowrap" }} onClick={onDelete}>{t(locale, "common.delete")}</button>
       </div>
     </div>
   );
 }
 
 export function AccessEditor() {
-  const { doc, dispatch, confirm } = useAppState();
+  const { doc, dispatch, confirm, locale } = useAppState();
   const sectionRef = useRef<HTMLElement>(null);
   const [expandedSeal, setExpandedSeal] = useState<string | null>(null);
   const prevSealCount = useRef(doc.access.seals.length);
@@ -66,25 +73,25 @@ export function AccessEditor() {
   return (
     <section className="section" id="chapter-access" ref={sectionRef} onClick={handleSectionClick}>
       <div className="section-header">
-        <span className="section-badge">密码指引</span>
+        <span className="section-badge">{t(locale, "access.badge")}</span>
         <button
           className="btn btn-ghost btn-sm"
           style={{ marginLeft: "auto" }}
           onClick={async () => {
             const ok = await confirm({
-              title: "删除「密码指引」模块",
-              message: "删除后该模块将不再显示，也不会出现在目录和导出的 PDF 中。",
-              confirmText: "删除模块",
+              title: t(locale, "confirmModule.title", { module: t(locale, "access.badge") }),
+              message: t(locale, "confirmModule.message"),
+              confirmText: t(locale, "common.deleteModule"),
             });
             if (ok) dispatch({ type: "REMOVE_ACCESS_MODULE" });
           }}
         >
-          删除模块
+          {t(locale, "common.deleteModule")}
         </button>
       </div>
       <div className="section-body">
         <p style={{ color: "var(--stone-500)", fontSize: 12, marginBottom: "var(--sp-4)" }}>
-          记录密码存放位置和 2FA 恢复方式，关联到具体资产。继承人通过这里找到登录所需的全部凭证。
+          {t(locale, "access.intro")}
         </p>
 
         {doc.access.seals.map((seal, i) => {
@@ -92,11 +99,13 @@ export function AccessEditor() {
             .map((id) => {
               const idx = doc.assets.findIndex((a) => a.id === id);
               if (idx === -1) return null;
-              return doc.assets[idx]!.institution || ASSET_TYPE_LABELS[doc.assets[idx]!.type as keyof typeof ASSET_TYPE_LABELS];
+              return doc.assets[idx]!.institution || assetTypeLabel(locale, doc.assets[idx]!.type);
             })
             .filter(Boolean);
           const uniqueNames = [...new Set(linkedNames)];
-          const sealLabel = uniqueNames.length > 0 ? uniqueNames.join("、") : `密码指引 #${i + 1}`;
+          const sealLabel = uniqueNames.length > 0
+            ? uniqueNames.join(locale === "en" ? ", " : "、")
+            : t(locale, "access.sealFallback", { n: i + 1 });
 
           if (seal.id !== expandedSeal) {
             return (
@@ -105,6 +114,7 @@ export function AccessEditor() {
                 seal={seal}
                 index={i}
                 sealLabel={sealLabel}
+                locale={locale}
                 onEdit={() => setExpandedSeal(seal.id)}
                 onDelete={() => dispatch({ type: "REMOVE_SEAL", id: seal.id })}
               />
@@ -116,8 +126,8 @@ export function AccessEditor() {
               <div className="card-header">
                 <span className="card-number">{String(i + 1).padStart(2, "0")}</span>
                 <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setExpandedSeal(null)}>收起</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "REMOVE_SEAL", id: seal.id })}>删除</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setExpandedSeal(null)}>{t(locale, "common.collapse")}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "REMOVE_SEAL", id: seal.id })}>{t(locale, "common.delete")}</button>
                 </div>
               </div>
               <div style={{ fontSize: 14, fontWeight: 500, color: "var(--stone-700)", marginBottom: "var(--sp-3)" }}>
@@ -125,10 +135,10 @@ export function AccessEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">存放位置</label>
+                  <label className="field-label">{t(locale, "access.fLocation")}</label>
                   <input
                     className="field-input"
-                    placeholder="例：1Password / 家中保险柜第二层"
+                    placeholder={t(locale, "access.fLocationPlaceholder")}
                     value={seal.location}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_SEAL", id: seal.id, patch: { location: e.target.value } })
@@ -140,10 +150,10 @@ export function AccessEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">密码说明</label>
+                  <label className="field-label">{t(locale, "access.fPasswordHint")}</label>
                   <input
                     className="field-input"
-                    placeholder="例：密码写在密封信封内 / 1Password 主密码见遗嘱"
+                    placeholder={t(locale, "access.fPasswordHintPlaceholder")}
                     value={seal.passwordHint}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_SEAL", id: seal.id, patch: { passwordHint: e.target.value } })
@@ -155,7 +165,7 @@ export function AccessEditor() {
               </div>
               <div className="field-group">
                 <div className="field">
-                  <label className="field-label">2FA 验证方式</label>
+                  <label className="field-label">{t(locale, "access.fTwoFactor")}</label>
                   <select
                     className="field-input"
                     value={seal.twoFactorMethod}
@@ -163,20 +173,20 @@ export function AccessEditor() {
                       dispatch({ type: "UPDATE_SEAL", id: seal.id, patch: { twoFactorMethod: e.target.value as TwoFactorMethod | "none" } })
                     }
                   >
-                    <option value="none">无</option>
-                    <option value="totp">TOTP 验证器</option>
-                    <option value="sms">短信验证</option>
-                    <option value="hardware_key">硬件密钥</option>
-                    <option value="email">邮箱验证</option>
-                    <option value="other">其他</option>
+                    <option value="none">{t(locale, "access.twoFactorNone")}</option>
+                    <option value="totp">{t(locale, "access.twoFactorTotp")}</option>
+                    <option value="sms">{t(locale, "access.twoFactorSms")}</option>
+                    <option value="hardware_key">{t(locale, "access.twoFactorHardware")}</option>
+                    <option value="email">{t(locale, "access.twoFactorEmail")}</option>
+                    <option value="other">{t(locale, "access.twoFactorOther")}</option>
                   </select>
                 </div>
                 {seal.twoFactorMethod !== "none" && (
                   <div className="field">
-                    <label className="field-label">2FA 恢复指引</label>
+                    <label className="field-label">{t(locale, "access.fTwoFactorRecovery")}</label>
                     <input
                       className="field-input"
-                      placeholder="恢复码位置 / 备用设备 / 恢复流程"
+                      placeholder={t(locale, "access.fTwoFactorRecoveryPlaceholder")}
                       value={seal.twoFactorRecovery}
                       onChange={(e) =>
                         dispatch({ type: "UPDATE_SEAL", id: seal.id, patch: { twoFactorRecovery: e.target.value } })
@@ -189,14 +199,14 @@ export function AccessEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">关联资产</label>
+                  <label className="field-label">{t(locale, "access.fLinkedAssets")}</label>
                   <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
                     {(() => {
                       const seen = new Map<string, { ids: string[]; label: string }>();
                       doc.assets.forEach((a, idx) => {
                         const key = `${a.institution}||${a.accountNumber}`;
                         if (!seen.has(key)) {
-                          seen.set(key, { ids: [a.id], label: assetDisplayName(a, idx) });
+                          seen.set(key, { ids: [a.id], label: assetDisplayName(a, idx, locale) });
                         } else {
                           seen.get(key)!.ids.push(a.id);
                         }
@@ -224,11 +234,11 @@ export function AccessEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">备注</label>
+                  <label className="field-label">{t(locale, "access.fNotes")}</label>
                   <textarea
                     className="field-input"
                     rows={2}
-                    placeholder="补充说明"
+                    placeholder={t(locale, "access.fNotesPlaceholder")}
                     value={seal.notes}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_SEAL", id: seal.id, patch: { notes: e.target.value } })
@@ -243,7 +253,7 @@ export function AccessEditor() {
         })}
 
         <button className="btn btn-secondary" onClick={() => dispatch({ type: "ADD_SEAL" })}>
-          + 添加密码指引
+          {t(locale, "access.add")}
         </button>
       </div>
     </section>

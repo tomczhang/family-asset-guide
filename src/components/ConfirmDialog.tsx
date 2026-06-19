@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { t } from "../i18n";
+import { getActiveLocale } from "../i18n/locale";
 
 export interface ConfirmOptions {
   title: string;
@@ -29,6 +31,7 @@ export function ConfirmDialog({ open, options, onConfirm, onCancel }: Props) {
   if (!open || !options) return null;
 
   const tone = options.tone ?? "danger";
+  const locale = getActiveLocale();
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -39,13 +42,13 @@ export function ConfirmDialog({ open, options, onConfirm, onCancel }: Props) {
         </p>
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>
-            {options.cancelText ?? "取消"}
+            {options.cancelText ?? t(locale, "common.cancel")}
           </button>
           <button
             className={`btn ${tone === "danger" ? "btn-danger" : "btn-primary"}`}
             onClick={onConfirm}
           >
-            {options.confirmText ?? "确定"}
+            {options.confirmText ?? t(locale, "common.confirm")}
           </button>
         </div>
       </div>

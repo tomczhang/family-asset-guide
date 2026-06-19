@@ -1,4 +1,6 @@
 import type { AssetType } from "../state/types";
+import type { Locale } from "../i18n/locale";
+import { getActiveLocale } from "../i18n/locale";
 
 export interface Institution {
   id: string;
@@ -9,7 +11,8 @@ export interface Institution {
   assetTypes: AssetType[];
 }
 
-export const INSTITUTIONS: Institution[] = [
+// 中文分区：中国大陆主流机构。
+const ZH_INSTITUTIONS: Institution[] = [
   // ===== 美股券商 =====
   {
     id: "ibkr",
@@ -265,23 +268,227 @@ export const INSTITUTIONS: Institution[] = [
   },
 ];
 
-export const DEFAULT_INSTITUTION: Record<AssetType, string> = {
-  us_stock: "ibkr",
-  hk_stock: "futu",
-  a_stock: "yinhe",
-  fund: "",
-  bank_deposit: "cmb",
-  insurance: "pingan",
-  crypto: "binance",
-  real_estate: "",
-  debt: "",
-  other: "",
+// 英文分区：美国主流机构。电话为各机构官网公开客服号，可在表单内自行覆盖。
+const EN_INSTITUTIONS: Institution[] = [
+  // ===== Brokerages =====
+  {
+    id: "fidelity",
+    name: "Fidelity Investments",
+    website: "https://www.fidelity.com",
+    phone: "1-800-343-3548",
+    appDownload: "App Store / Google Play: search \"Fidelity Investments\"",
+    assetTypes: ["us_stock", "fund"],
+  },
+  {
+    id: "schwab",
+    name: "Charles Schwab",
+    website: "https://www.schwab.com",
+    phone: "1-800-435-4000",
+    appDownload: "App Store / Google Play: search \"Schwab Mobile\"",
+    assetTypes: ["us_stock", "fund"],
+  },
+  {
+    id: "vanguard",
+    name: "Vanguard",
+    website: "https://investor.vanguard.com",
+    phone: "1-877-662-7447",
+    appDownload: "App Store / Google Play: search \"Vanguard\"",
+    assetTypes: ["us_stock", "fund"],
+  },
+  {
+    id: "robinhood",
+    name: "Robinhood",
+    website: "https://robinhood.com",
+    phone: "Request a callback in the app",
+    appDownload: "App Store / Google Play: search \"Robinhood\"",
+    assetTypes: ["us_stock"],
+  },
+  {
+    id: "etrade",
+    name: "E*TRADE from Morgan Stanley",
+    website: "https://us.etrade.com",
+    phone: "1-800-387-2331",
+    appDownload: "App Store / Google Play: search \"E*TRADE\"",
+    assetTypes: ["us_stock"],
+  },
+  {
+    id: "merrill",
+    name: "Merrill Edge",
+    website: "https://www.merrilledge.com",
+    phone: "1-877-653-4732",
+    appDownload: "App Store / Google Play: search \"Merrill Edge\"",
+    assetTypes: ["us_stock", "fund"],
+  },
+  {
+    id: "ibkr",
+    name: "Interactive Brokers",
+    website: "https://www.interactivebrokers.com",
+    phone: "1-877-442-2757",
+    appDownload: "App Store / Google Play: search \"IBKR\"",
+    assetTypes: ["us_stock", "hk_stock"],
+  },
+  // ===== Banks =====
+  {
+    id: "chase",
+    name: "Chase (JPMorgan Chase)",
+    website: "https://www.chase.com",
+    phone: "1-800-935-9935",
+    appDownload: "App Store / Google Play: search \"Chase Mobile\"",
+    assetTypes: ["bank_deposit"],
+  },
+  {
+    id: "bofa",
+    name: "Bank of America",
+    website: "https://www.bankofamerica.com",
+    phone: "1-800-432-1000",
+    appDownload: "App Store / Google Play: search \"Bank of America\"",
+    assetTypes: ["bank_deposit"],
+  },
+  {
+    id: "wellsfargo",
+    name: "Wells Fargo",
+    website: "https://www.wellsfargo.com",
+    phone: "1-800-869-3557",
+    appDownload: "App Store / Google Play: search \"Wells Fargo Mobile\"",
+    assetTypes: ["bank_deposit"],
+  },
+  {
+    id: "citi",
+    name: "Citibank",
+    website: "https://www.citi.com",
+    phone: "1-800-374-9700",
+    appDownload: "App Store / Google Play: search \"Citi Mobile\"",
+    assetTypes: ["bank_deposit"],
+  },
+  {
+    id: "capitalone",
+    name: "Capital One",
+    website: "https://www.capitalone.com",
+    phone: "1-800-655-2265",
+    appDownload: "App Store / Google Play: search \"Capital One Mobile\"",
+    assetTypes: ["bank_deposit"],
+  },
+  // ===== Insurance =====
+  {
+    id: "northwestern",
+    name: "Northwestern Mutual",
+    website: "https://www.northwesternmutual.com",
+    phone: "1-866-950-4644",
+    appDownload: "App Store / Google Play: search \"Northwestern Mutual\"",
+    assetTypes: ["insurance"],
+  },
+  {
+    id: "newyorklife",
+    name: "New York Life",
+    website: "https://www.newyorklife.com",
+    phone: "1-800-225-5695",
+    appDownload: "App Store / Google Play: search \"New York Life\"",
+    assetTypes: ["insurance"],
+  },
+  {
+    id: "massmutual",
+    name: "MassMutual",
+    website: "https://www.massmutual.com",
+    phone: "1-800-272-2216",
+    appDownload: "App Store / Google Play: search \"MassMutual\"",
+    assetTypes: ["insurance"],
+  },
+  {
+    id: "prudential",
+    name: "Prudential",
+    website: "https://www.prudential.com",
+    phone: "1-800-778-2255",
+    appDownload: "App Store / Google Play: search \"Prudential\"",
+    assetTypes: ["insurance"],
+  },
+  {
+    id: "statefarm",
+    name: "State Farm",
+    website: "https://www.statefarm.com",
+    phone: "1-800-782-8332",
+    appDownload: "App Store / Google Play: search \"State Farm\"",
+    assetTypes: ["insurance"],
+  },
+  // ===== Crypto =====
+  {
+    id: "coinbase",
+    name: "Coinbase",
+    website: "https://www.coinbase.com",
+    phone: "1-888-908-7930",
+    appDownload: "App Store / Google Play: search \"Coinbase\"",
+    assetTypes: ["crypto"],
+  },
+  {
+    id: "kraken",
+    name: "Kraken",
+    website: "https://www.kraken.com",
+    phone: "Live chat at support.kraken.com",
+    appDownload: "App Store / Google Play: search \"Kraken\"",
+    assetTypes: ["crypto"],
+  },
+  {
+    id: "gemini",
+    name: "Gemini",
+    website: "https://www.gemini.com",
+    phone: "Support at support.gemini.com",
+    appDownload: "App Store / Google Play: search \"Gemini\"",
+    assetTypes: ["crypto"],
+  },
+];
+
+const INSTITUTIONS_BY_LOCALE: Record<Locale, Institution[]> = {
+  "zh-CN": ZH_INSTITUTIONS,
+  en: EN_INSTITUTIONS,
 };
 
-export function getInstitutionsByType(assetType: AssetType): Institution[] {
-  return INSTITUTIONS.filter((inst) => inst.assetTypes.includes(assetType));
+const DEFAULT_INSTITUTION_BY_LOCALE: Record<Locale, Record<AssetType, string>> = {
+  "zh-CN": {
+    us_stock: "ibkr",
+    hk_stock: "futu",
+    a_stock: "yinhe",
+    fund: "",
+    bank_deposit: "cmb",
+    insurance: "pingan",
+    crypto: "binance",
+    real_estate: "",
+    debt: "",
+    other: "",
+  },
+  en: {
+    us_stock: "fidelity",
+    hk_stock: "ibkr",
+    a_stock: "",
+    fund: "vanguard",
+    bank_deposit: "chase",
+    insurance: "northwestern",
+    crypto: "coinbase",
+    real_estate: "",
+    debt: "",
+    other: "",
+  },
+};
+
+export function getInstitutions(locale: Locale = getActiveLocale()): Institution[] {
+  return INSTITUTIONS_BY_LOCALE[locale];
 }
 
-export function getInstitutionById(id: string): Institution | undefined {
-  return INSTITUTIONS.find((inst) => inst.id === id);
+export function getDefaultInstitutionId(
+  assetType: AssetType,
+  locale: Locale = getActiveLocale(),
+): string {
+  return DEFAULT_INSTITUTION_BY_LOCALE[locale][assetType];
+}
+
+export function getInstitutionsByType(
+  assetType: AssetType,
+  locale: Locale = getActiveLocale(),
+): Institution[] {
+  return INSTITUTIONS_BY_LOCALE[locale].filter((inst) => inst.assetTypes.includes(assetType));
+}
+
+export function getInstitutionById(
+  id: string,
+  locale: Locale = getActiveLocale(),
+): Institution | undefined {
+  return INSTITUTIONS_BY_LOCALE[locale].find((inst) => inst.id === id);
 }

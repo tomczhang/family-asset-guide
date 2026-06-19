@@ -1,4 +1,6 @@
 import type { Document } from "../state/types";
+import type { Locale } from "../i18n/locale";
+import { getActiveLocale } from "../i18n/locale";
 import { DEFAULT_SOP_STAGES } from "./sop-template";
 
 let mockId = 0;
@@ -6,7 +8,7 @@ function mid(): string {
   return `mock_${++mockId}`;
 }
 
-export function createMockDocument(): Document {
+function createZhMockDocument(): Document {
   mockId = 0;
   const now = new Date().toISOString();
 
@@ -272,7 +274,7 @@ export function createMockDocument(): Document {
       ],
     },
     accessRemoved: false,
-    sopStages: DEFAULT_SOP_STAGES(),
+    sopStages: DEFAULT_SOP_STAGES("zh-CN"),
     sopRemoved: false,
     customSections: [
       {
@@ -299,4 +301,276 @@ export function createMockDocument(): Document {
     ],
     customRemoved: false,
   };
+}
+
+function createEnMockDocument(): Document {
+  mockId = 0;
+  const now = new Date().toISOString();
+
+  const fidelityId = mid();
+  const vanguardId = mid();
+  const chaseId = mid();
+  const nwmId = mid();
+  const cryptoId = mid();
+  const houseId = mid();
+  const debtId = mid();
+
+  return {
+    meta: {
+      familyName: "Smith",
+      createdAt: now,
+      updatedAt: now,
+      passwordHolderHint: "Jane Smith (spouse) / Attorney Robert Lee",
+    },
+    assets: [
+      {
+        id: fidelityId,
+        type: "us_stock",
+        institutionId: "fidelity",
+        institution: "Fidelity Investments",
+        accountNumber: "Z2****781",
+        registerEmail: "john****@gmail.com",
+        bindPhone: "(555) ***-4567",
+        loginUsername: "john_inv",
+        loginUrl: "https://www.fidelity.com",
+        contactPhone: "1-800-343-3548",
+        appDownload: "App Store / Google Play: search \"Fidelity Investments\"",
+        estimatedValue: "460,118",
+        cashValue: "58,118",
+        companyGrantedStockValue: "244,000",
+        assetDetail: "Company RSUs + self-purchased",
+        accountOwner: "John Smith",
+        currency: "USD",
+        hasBeneficiary: true,
+        beneficiary: "Jane Smith (TOD)",
+        notes: "Primary brokerage; holds VOO / QQQ / AAPL, etc.",
+        insuranceKind: "",
+        insuredPerson: "",
+        paymentYears: "",
+        stillPaying: true,
+      },
+      {
+        id: vanguardId,
+        type: "fund",
+        institutionId: "vanguard",
+        institution: "Vanguard",
+        accountNumber: "VG****2345",
+        registerEmail: "john****@gmail.com",
+        bindPhone: "(555) ***-4567",
+        loginUsername: "",
+        loginUrl: "https://investor.vanguard.com",
+        contactPhone: "1-877-662-7447",
+        appDownload: "App Store / Google Play: search \"Vanguard\"",
+        estimatedValue: "180,000",
+        cashValue: "",
+        companyGrantedStockValue: "",
+        assetDetail: "401(k) + index funds (VTSAX)",
+        accountOwner: "John Smith",
+        currency: "USD",
+        hasBeneficiary: true,
+        beneficiary: "Jane Smith",
+        notes: "401(k) — confirm beneficiary and RMD rules with the custodian",
+        insuranceKind: "",
+        insuredPerson: "",
+        paymentYears: "",
+        stillPaying: true,
+      },
+      {
+        id: chaseId,
+        type: "bank_deposit",
+        institutionId: "chase",
+        institution: "Chase (JPMorgan Chase)",
+        accountNumber: "**** **** 1234",
+        registerEmail: "",
+        bindPhone: "(555) ***-4567",
+        loginUsername: "jsmith",
+        loginUrl: "https://www.chase.com",
+        contactPhone: "1-800-935-9935",
+        appDownload: "App Store / Google Play: search \"Chase Mobile\"",
+        estimatedValue: "75,000",
+        cashValue: "",
+        companyGrantedStockValue: "",
+        assetDetail: "Checking + savings (CD)",
+        accountOwner: "Jane Smith",
+        currency: "USD",
+        hasBeneficiary: false,
+        beneficiary: "",
+        notes: "Payroll account + family emergency fund",
+        insuranceKind: "",
+        insuredPerson: "",
+        paymentYears: "",
+        stillPaying: true,
+      },
+      {
+        id: nwmId,
+        type: "insurance",
+        institutionId: "northwestern",
+        institution: "Northwestern Mutual",
+        accountNumber: "NM-2019-****-8899",
+        registerEmail: "",
+        bindPhone: "(555) ***-4567",
+        loginUsername: "",
+        loginUrl: "https://www.northwesternmutual.com",
+        contactPhone: "1-866-950-4644",
+        appDownload: "App Store / Google Play: search \"Northwestern Mutual\"",
+        estimatedValue: "1,000,000",
+        cashValue: "",
+        companyGrantedStockValue: "",
+        assetDetail: "",
+        accountOwner: "",
+        currency: "USD",
+        hasBeneficiary: true,
+        beneficiary: "Jane Smith (spouse), Emily Smith (child)",
+        notes: "Whole life + term policy; annual premium $9,800",
+        insuranceKind: "Whole life + term life",
+        insuredPerson: "John Smith (self)",
+        paymentYears: "20 years",
+        stillPaying: true,
+      },
+      {
+        id: cryptoId,
+        type: "crypto",
+        institutionId: "",
+        institution: "Ledger hardware wallet",
+        accountNumber: "0x7a3b****...d92f",
+        registerEmail: "",
+        bindPhone: "",
+        loginUsername: "",
+        loginUrl: "https://www.ledger.com",
+        contactPhone: "",
+        appDownload: "App Store / Google Play: search \"Ledger Live\"",
+        estimatedValue: "2.5 BTC + 15 ETH",
+        cashValue: "",
+        companyGrantedStockValue: "",
+        assetDetail: "Hardware wallet",
+        accountOwner: "John Smith",
+        currency: "USD",
+        hasBeneficiary: false,
+        beneficiary: "",
+        notes: "Seed phrase is in sealed envelope B — never enter it online",
+        insuranceKind: "",
+        insuredPerson: "",
+        paymentYears: "",
+        stillPaying: true,
+      },
+      {
+        id: houseId,
+        type: "real_estate",
+        institutionId: "",
+        institution: "Primary residence — Austin, TX",
+        accountNumber: "Travis County Deed #2018-****",
+        registerEmail: "",
+        bindPhone: "",
+        loginUsername: "",
+        loginUrl: "",
+        contactPhone: "",
+        appDownload: "",
+        estimatedValue: "850,000",
+        cashValue: "",
+        companyGrantedStockValue: "",
+        assetDetail: "Primary home",
+        accountOwner: "John Smith / Jane Smith",
+        currency: "USD",
+        hasBeneficiary: false,
+        beneficiary: "",
+        notes: "Deed is in the home safe; mortgage paid off",
+        insuranceKind: "",
+        insuredPerson: "",
+        paymentYears: "",
+        stillPaying: true,
+      },
+      {
+        id: debtId,
+        type: "debt",
+        institutionId: "",
+        institution: "Auto loan reminder",
+        accountNumber: "LOAN-2024-****",
+        registerEmail: "",
+        bindPhone: "",
+        loginUsername: "",
+        loginUrl: "",
+        contactPhone: "",
+        appDownload: "",
+        estimatedValue: "18,000",
+        cashValue: "",
+        companyGrantedStockValue: "",
+        assetDetail: "Remaining auto loan",
+        accountOwner: "John Smith",
+        currency: "USD",
+        hasBeneficiary: false,
+        beneficiary: "",
+        notes: "Debt is a reminder only — not counted in the asset pool total, nor subtracted from it",
+        insuranceKind: "",
+        insuredPerson: "",
+        paymentYears: "",
+        stillPaying: true,
+      },
+    ],
+    access: {
+      twoFactorEntries: [],
+      seals: [
+        {
+          id: mid(),
+          label: "Envelope A — Financial account passwords",
+          location: "Home safe, 2nd shelf (combination is in the will appendix)",
+          linkedAssetIds: [fidelityId, vanguardId, chaseId],
+          passwordHint: "Login and trading passwords for each brokerage and bank",
+          twoFactorMethod: "totp",
+          twoFactorRecovery: "Google Authenticator recovery codes on the last page inside the envelope",
+          notes: "",
+        },
+        {
+          id: mid(),
+          label: "Envelope B — Crypto seed phrase",
+          location: "Bank safe deposit box (Chase, Downtown branch)",
+          linkedAssetIds: [cryptoId],
+          passwordHint: "24-word seed phrase + Ledger PIN",
+          twoFactorMethod: "hardware_key",
+          twoFactorRecovery: "Ledger device is in the home office desk drawer",
+          notes: "Important: never photograph the seed phrase or enter it online",
+        },
+        {
+          id: mid(),
+          label: "Envelope C — Insurance policies",
+          location: "1Password family shared vault",
+          linkedAssetIds: [nwmId],
+          passwordHint: "1Password master password is in the will appendix",
+          twoFactorMethod: "email",
+          twoFactorRecovery: "Recovery email: john****@gmail.com",
+          notes: "",
+        },
+      ],
+    },
+    accessRemoved: false,
+    sopStages: DEFAULT_SOP_STAGES("en"),
+    sopRemoved: false,
+    customSections: [
+      {
+        id: mid(),
+        title: "Lawyer & accountant contacts",
+        content: `Attorney: Robert Lee, Esq. (Lee & Partners LLP)
+Phone: (512) 610-****
+Email: rlee****@leepartners.com
+Focus: estate planning, probate
+
+Accountant: Sarah Johnson, CPA
+Phone: (512) 232-****
+Email: sjohnson****@cpafirm.com
+Handles: annual tax filing, estate tax matters`,
+      },
+      {
+        id: mid(),
+        title: "Important reminders",
+        content: `- Review this guide every six months to keep it accurate
+- Update promptly after major asset changes (buying/selling property, opening new accounts, etc.)
+- Sealed-envelope passwords are known only to the spouse and the designated attorney
+- Store the encrypted PDF of this guide in at least two secure locations`,
+      },
+    ],
+    customRemoved: false,
+  };
+}
+
+export function createMockDocument(locale: Locale = getActiveLocale()): Document {
+  return locale === "en" ? createEnMockDocument() : createZhMockDocument();
 }

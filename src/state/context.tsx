@@ -18,7 +18,10 @@ import {
 } from "./document";
 import { ConfirmDialog, type ConfirmOptions } from "../components/ConfirmDialog";
 import { extractDraftFromPdf } from "../pdf/generate";
-import { DEFAULT_SOP_STAGES } from "../data/sop-template";
+import { DEFAULT_SOP_STAGES, isDefaultSopStages } from "../data/sop-template";
+import type { Locale } from "../i18n/locale";
+import { getInitialLocale, persistLocale, setActiveLocale } from "../i18n/locale";
+import { t } from "../i18n";
 
 interface AppState {
   doc: Document;
@@ -33,6 +36,8 @@ interface AppState {
   setOpenPasswordModal: (v: boolean) => void;
   privacyMode: boolean;
   setPrivacyMode: (v: boolean) => void;
+  locale: Locale;
+  setLocale: (v: Locale) => void;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -44,10 +49,24 @@ export function useAppState(): AppState {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [doc, dispatch] = useReducer(docReducer, undefined, createEmptyDocument);
+  const [doc, dispatch] = useReducer(docReducer, undefined, () =>
+    createEmptyDocument(getInitialLocale()),
+  );
   const [draftStatus, setDraftStatus] = useState<DraftStatus>({ kind: "clean" });
   const [openPasswordModal, setOpenPasswordModal] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(true);
+  const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
+
+  const setLocale = useCallback((next: Locale) => {
+    if (next === locale) return;
+    // 仅当默认 SOP 未被用户编辑时，才随语言切换替换为新语言的默认模板，
+    // 保留用户自定义内容。用原始 dispatch 避免误标记为「已修改」。
+    const sopWasDefault = !doc.sopRemoved && isDefaultSopStages(doc.sopStages, locale);
+    setActiveLocale(next);
+    persistLocale(next);
+    setLocaleState(next);
+    if (sopWasDefault) dispatch({ type: "RELOCALIZE_SOP" });
+  }, [locale, doc.sopStages, doc.sopRemoved]);
   const [confirmState, setConfirmState] = useState<ConfirmOptions | null>(null);
   const confirmResolver = useRef<((value: boolean) => void) | null>(null);
 
@@ -86,11 +105,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const a = document.createElement("a");
     const ts = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `家庭应急手册-UNENCRYPTED-${ts}.json`;
+    a.download = t(locale, "draft.fileName", { date: ts });
     a.click();
     URL.revokeObjectURL(url);
     setDraftStatus({ kind: "exported", at: Date.now() });
-  }, [doc]);
+  }, [doc, locale]);
 
   const importDraft = useCallback(
     async (file: File, password?: string) => {
@@ -98,7 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
       let loaded;
       if (isPdf) {
-        if (!password) throw new Error("导入加密 PDF 需要密码。");
+        if (!password) throw new Error(t(locale, "draft.importPdfNeedPassword"));
         const bytes = await file.arrayBuffer();
         loaded = await extractDraftFromPdf(bytes, password);
       } else {
@@ -115,7 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "LOAD_DOCUMENT", document: loaded });
       setDraftStatus({ kind: "clean" });
     },
-    [],
+    [locale],
   );
 
   const clearAll = useCallback(() => {
@@ -138,6 +157,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setOpenPasswordModal,
         privacyMode,
         setPrivacyMode,
+        locale,
+        setLocale,
       }}
     >
       {children}

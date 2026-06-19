@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import "./PasswordModal.css";
 import type { PdfOutputMode } from "../pdf/generate";
+import { useAppState } from "../state/context";
+import { t } from "../i18n";
+import type { Locale } from "../i18n/locale";
 
 interface Props {
   open: boolean;
@@ -10,14 +13,15 @@ interface Props {
   onConfirm: (password: string, mode: PdfOutputMode) => void;
 }
 
-function strengthLabel(pw: string): { text: string; color: string } {
+function strengthLabel(pw: string, locale: Locale): { text: string; color: string } {
   if (pw.length === 0) return { text: "", color: "var(--stone-400)" };
-  if (pw.length < 6) return { text: "太短", color: "#dc2626" };
-  if (pw.length < 10) return { text: "一般", color: "#ca8a04" };
-  return { text: "强", color: "#16a34a" };
+  if (pw.length < 6) return { text: t(locale, "password.strengthShort"), color: "#dc2626" };
+  if (pw.length < 10) return { text: t(locale, "password.strengthMedium"), color: "#ca8a04" };
+  return { text: t(locale, "password.strengthStrong"), color: "#16a34a" };
 }
 
 export function PasswordModal({ open, generating, statusMessage, onClose, onConfirm }: Props) {
+  const { locale } = useAppState();
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [mode, setMode] = useState<PdfOutputMode>("relative");
@@ -31,7 +35,7 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
 
   if (!open) return null;
 
-  const strength = strengthLabel(password);
+  const strength = strengthLabel(password, locale);
   const valid = password.length >= 6;
   const confirmed = password === confirmPw && confirmPw.length > 0;
   const canSubmit = valid && confirmed && !generating;
@@ -43,22 +47,22 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
   return (
     <div className="modal-overlay" onClick={generating ? undefined : onClose}>
       <div className="modal pw-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-title">{generating ? "正在生成 PDF…" : "生成加密 PDF"}</div>
+        <div className="modal-title">{generating ? t(locale, "password.generating") : t(locale, "password.title")}</div>
 
         {generating ? (
           <div style={{ textAlign: "center", padding: "var(--sp-6) 0" }}>
             <div className="spinner" />
             <p style={{ color: "var(--stone-500)", fontSize: 13, marginTop: "var(--sp-4)" }}>
-              {statusMessage || "正在加载字体并生成加密 PDF，请稍候…"}
+              {statusMessage || t(locale, "password.generatingMsg")}
             </p>
           </div>
         ) : (
           <>
             <div className="warning-banner">
-              ⚠ 此密码是 PDF 的唯一解锁方式，请务必记录并妥善保管。
+              {t(locale, "password.warn")}
             </div>
 
-            <div className="pdf-mode-group" role="radiogroup" aria-label="PDF 导出类型">
+            <div className="pdf-mode-group" role="radiogroup" aria-label={t(locale, "password.modeAria")}>
               <button
                 type="button"
                 className={`pdf-mode-option${mode === "relative" ? " pdf-mode-option--active" : ""}`}
@@ -66,8 +70,8 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
                 aria-checked={mode === "relative"}
                 onClick={() => setMode("relative")}
               >
-                <span className="pdf-mode-title">亲属版</span>
-                <span className="pdf-mode-desc">资产清单 + 总额与占比 + 紧急流程；不含每笔金额、登录凭证、密码指引和草稿。</span>
+                <span className="pdf-mode-title">{t(locale, "password.relativeTitle")}</span>
+                <span className="pdf-mode-desc">{t(locale, "password.relativeDesc")}</span>
               </button>
               <button
                 type="button"
@@ -76,17 +80,17 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
                 aria-checked={mode === "full"}
                 onClick={() => setMode("full")}
               >
-                <span className="pdf-mode-title">夫妻版</span>
-                <span className="pdf-mode-desc">账户信息 + 完整资产金额；包含密码指引和可导入草稿。</span>
+                <span className="pdf-mode-title">{t(locale, "password.fullTitle")}</span>
+                <span className="pdf-mode-desc">{t(locale, "password.fullDesc")}</span>
               </button>
             </div>
 
             <div className="field" style={{ marginBottom: "var(--sp-3)" }}>
-              <label className="field-label">密码（≥6 位）</label>
+              <label className="field-label">{t(locale, "password.passwordLabel")}</label>
               <input
                 className="field-input"
                 type="password"
-                placeholder="输入密码"
+                placeholder={t(locale, "password.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="off"
@@ -100,11 +104,11 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
             </div>
 
             <div className="field" style={{ marginBottom: "var(--sp-4)" }}>
-              <label className="field-label">确认密码</label>
+              <label className="field-label">{t(locale, "password.confirmLabel")}</label>
               <input
                 className="field-input"
                 type="password"
-                placeholder="再次输入密码"
+                placeholder={t(locale, "password.confirmPlaceholder")}
                 value={confirmPw}
                 onChange={(e) => setConfirmPw(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
@@ -113,14 +117,14 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
               />
               {confirmPw.length > 0 && !confirmed && (
                 <span style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>
-                  密码不匹配
+                  {t(locale, "password.mismatch")}
                 </span>
               )}
             </div>
 
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={onClose}>
-                取消
+                {t(locale, "common.cancel")}
               </button>
               <button
                 className="btn btn-primary"
@@ -128,7 +132,7 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
                 onClick={handleSubmit}
                 style={{ opacity: canSubmit ? 1 : 0.5 }}
               >
-                生成{mode === "full" ? "夫妻版" : "亲属版"} PDF
+                {mode === "full" ? t(locale, "password.submitFull") : t(locale, "password.submitRelative")}
               </button>
             </div>
           </>

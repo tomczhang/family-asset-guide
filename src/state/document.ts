@@ -10,14 +10,17 @@ import type {
   DraftStatus,
 } from "./types";
 import { DEFAULT_SOP_STAGES } from "../data/sop-template";
-import { DEFAULT_INSTITUTION, getInstitutionById } from "../data/institutions";
+import { getDefaultInstitutionId, getInstitutionById } from "../data/institutions";
+import { getActiveLocale } from "../i18n/locale";
+import type { Locale } from "../i18n/locale";
+import { t } from "../i18n";
 
 let nextId = 1;
 export function genId(): string {
   return `id_${Date.now()}_${nextId++}`;
 }
 
-export function createEmptyDocument(): Document {
+export function createEmptyDocument(locale: Locale = getActiveLocale()): Document {
   return {
     meta: {
       familyName: "",
@@ -28,7 +31,7 @@ export function createEmptyDocument(): Document {
     assets: [],
     access: { twoFactorEntries: [], seals: [] },
     accessRemoved: false,
-    sopStages: DEFAULT_SOP_STAGES(),
+    sopStages: DEFAULT_SOP_STAGES(locale),
     sopRemoved: false,
     customSections: [],
     customRemoved: false,
@@ -53,6 +56,7 @@ export type DocAction =
   | { type: "UPDATE_SOP_STAGE"; id: string; patch: Partial<SopStage> }
   | { type: "REMOVE_SOP_STAGE"; id: string }
   | { type: "REMOVE_SOP_MODULE" }
+  | { type: "RELOCALIZE_SOP" }
   | { type: "ADD_CUSTOM_SECTION" }
   | { type: "UPDATE_CUSTOM_SECTION"; id: string; patch: Partial<CustomSection> }
   | { type: "REMOVE_CUSTOM_SECTION"; id: string }
@@ -76,9 +80,10 @@ export function docReducer(state: Document, action: DocAction): Document {
       return touch({ ...state, meta: { ...state.meta, [action.field]: action.value } });
 
     case "ADD_ASSET": {
+      const locale = getActiveLocale();
       const defaultType = action.assetType ?? "us_stock";
-      const defaultInstId = DEFAULT_INSTITUTION[defaultType];
-      const inst = getInstitutionById(defaultInstId);
+      const defaultInstId = getDefaultInstitutionId(defaultType, locale);
+      const inst = getInstitutionById(defaultInstId, locale);
       return touch({
         ...state,
         assets: [
@@ -185,7 +190,9 @@ export function docReducer(state: Document, action: DocAction): Document {
             ...state.access.seals,
             {
               id: genId(),
-              label: `密码指引 #${String.fromCharCode(65 + state.access.seals.length)}`,
+              label: t(getActiveLocale(), "access.sealFallback", {
+                n: String.fromCharCode(65 + state.access.seals.length),
+              }),
               location: "",
               linkedAssetIds: [],
               passwordHint: "",
@@ -250,6 +257,10 @@ export function docReducer(state: Document, action: DocAction): Document {
     case "REMOVE_SOP_MODULE":
       return touch({ ...state, sopRemoved: true, sopStages: [] });
 
+    case "RELOCALIZE_SOP":
+      // 把未经编辑的默认 SOP 替换为当前语言的默认模板（语言切换时触发）。
+      return { ...state, sopStages: DEFAULT_SOP_STAGES(getActiveLocale()) };
+
     case "ADD_CUSTOM_SECTION":
       return touch({
         ...state,
@@ -280,7 +291,7 @@ export function docReducer(state: Document, action: DocAction): Document {
       return action.document;
 
     case "CLEAR_ALL":
-      return createEmptyDocument();
+      return createEmptyDocument(getActiveLocale());
   }
 }
 
@@ -303,7 +314,7 @@ export function unwrapDraft(raw: unknown): Document {
     !("schemaVersion" in raw) ||
     !("document" in raw)
   ) {
-    throw new Error("无效的草稿文件格式");
+    throw new Error(t(getActiveLocale(), "draft.invalidFormat"));
   }
   const envelope = raw as DraftEnvelope;
   return migrate(envelope);
@@ -312,7 +323,10 @@ export function unwrapDraft(raw: unknown): Document {
 function migrate(envelope: DraftEnvelope): Document {
   if (envelope.schemaVersion > CURRENT_SCHEMA_VERSION) {
     throw new Error(
-      `草稿版本 ${envelope.schemaVersion} 高于当前支持版本 ${CURRENT_SCHEMA_VERSION}`,
+      t(getActiveLocale(), "draft.versionTooHigh", {
+        v: envelope.schemaVersion,
+        current: CURRENT_SCHEMA_VERSION,
+      }),
     );
   }
   const doc = envelope.document;
@@ -360,15 +374,15 @@ function migrate(envelope: DraftEnvelope): Document {
 
 // --- Draft Status helpers ---
 
-export function draftStatusLabel(status: DraftStatus): string {
+export function draftStatusLabel(status: DraftStatus, locale: Locale = getActiveLocale()): string {
   switch (status.kind) {
     case "clean":
       return "";
     case "modified":
-      return "● 未导出";
+      return t(locale, "draft.modified");
     case "exported": {
       const mins = Math.floor((Date.now() - status.at) / 60_000);
-      return `✓ 已导出 ${mins} 分钟前`;
+      return t(locale, "draft.exported", { n: mins });
     }
   }
 }

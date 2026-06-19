@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppState } from "../state/context";
 import type { SopStage } from "../state/types";
+import type { Locale } from "../i18n/locale";
+import { t } from "../i18n";
 
 function CollapsedSop({
   stage,
   index,
+  locale,
   onEdit,
   onDelete,
 }: {
   stage: SopStage;
   index: number;
+  locale: Locale;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -18,20 +22,20 @@ function CollapsedSop({
       <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
         <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
         <span style={{ fontSize: 13, color: "var(--stone-700)", fontWeight: 500 }}>
-          {stage.title || "未命名阶段"}
+          {stage.title || t(locale, "sop.unnamedStage")}
         </span>
         <span style={{ fontSize: 12, color: "var(--stone-400)", marginLeft: "auto" }}>
-          {stage.content ? `${stage.content.split("\n").length} 行` : "空"}
+          {stage.content ? t(locale, "sop.lineCount", { n: stage.content.split("\n").length }) : t(locale, "sop.empty")}
         </span>
-        <button className="btn btn-ghost btn-sm" onClick={onEdit}>编辑</button>
-        <button className="btn btn-ghost btn-sm" onClick={onDelete}>删除</button>
+        <button className="btn btn-ghost btn-sm" onClick={onEdit}>{t(locale, "common.edit")}</button>
+        <button className="btn btn-ghost btn-sm" onClick={onDelete}>{t(locale, "common.delete")}</button>
       </div>
     </div>
   );
 }
 
 export function SopEditor() {
-  const { doc, dispatch, confirm } = useAppState();
+  const { doc, dispatch, confirm, locale } = useAppState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const prevCountRef = useRef(doc.sopStages.length);
@@ -64,25 +68,25 @@ export function SopEditor() {
   return (
     <section className="section" id="chapter-sop" ref={sectionRef}>
       <div className="section-header">
-        <span className="section-badge">紧急响应流程</span>
+        <span className="section-badge">{t(locale, "sop.badge")}</span>
         <button
           className="btn btn-ghost btn-sm"
           style={{ marginLeft: "auto" }}
           onClick={async () => {
             const ok = await confirm({
-              title: "删除「紧急响应流程」模块",
-              message: "删除后该模块将不再显示，也不会出现在目录和导出的 PDF 中。",
-              confirmText: "删除模块",
+              title: t(locale, "confirmModule.title", { module: t(locale, "sop.badge") }),
+              message: t(locale, "confirmModule.message"),
+              confirmText: t(locale, "common.deleteModule"),
             });
             if (ok) dispatch({ type: "REMOVE_SOP_MODULE" });
           }}
         >
-          删除模块
+          {t(locale, "common.deleteModule")}
         </button>
       </div>
       <div className="section-body">
         <p style={{ color: "var(--stone-500)", fontSize: 13, marginBottom: "var(--sp-4)" }}>
-          标准操作流程：可根据实际情况添加、修改或删除阶段内容。
+          {t(locale, "sop.intro")}
         </p>
 
         {doc.sopStages.map((stage, i) => {
@@ -92,6 +96,7 @@ export function SopEditor() {
                 key={stage.id}
                 stage={stage}
                 index={i}
+                locale={locale}
                 onEdit={() => setExpandedId(stage.id)}
                 onDelete={() => dispatch({ type: "REMOVE_SOP_STAGE", id: stage.id })}
               />
@@ -103,16 +108,16 @@ export function SopEditor() {
               <div className="card-header">
                 <span className="card-number">{String(i + 1).padStart(2, "0")}</span>
                 <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setExpandedId(null)}>收起</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "REMOVE_SOP_STAGE", id: stage.id })}>删除</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setExpandedId(null)}>{t(locale, "common.collapse")}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "REMOVE_SOP_STAGE", id: stage.id })}>{t(locale, "common.delete")}</button>
                 </div>
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">阶段名称</label>
+                  <label className="field-label">{t(locale, "sop.fStageTitle")}</label>
                   <input
                     className="field-input"
-                    placeholder="例：确认与通知"
+                    placeholder={t(locale, "sop.fStageTitlePlaceholder")}
                     value={stage.title}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_SOP_STAGE", id: stage.id, patch: { title: e.target.value } })
@@ -124,11 +129,11 @@ export function SopEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">操作内容</label>
+                  <label className="field-label">{t(locale, "sop.fContent")}</label>
                   <textarea
                     className="field-input"
                     rows={6}
-                    placeholder="填写具体操作步骤..."
+                    placeholder={t(locale, "sop.fContentPlaceholder")}
                     value={stage.content}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_SOP_STAGE", id: stage.id, patch: { content: e.target.value } })
@@ -144,7 +149,7 @@ export function SopEditor() {
         })}
 
         <button className="btn btn-secondary" onClick={() => dispatch({ type: "ADD_SOP_STAGE" })}>
-          + 添加阶段
+          {t(locale, "sop.add")}
         </button>
       </div>
     </section>

@@ -36,16 +36,19 @@ async function loadPdfEngine(): Promise<{ PDFDocument: PdfLib["PDFDocument"]; fo
 const rgb = (r: number, g: number, b: number): Color =>
   ({ type: "RGB", red: r, green: g, blue: b }) as unknown as Color;
 
-import { ASSET_TYPE_LABELS, CURRENCY_LABELS } from "../state/types";
 import { wrapDraft, unwrapDraft } from "../state/document";
 import { formatCny, formatCoarseCny, groupAssetsByFilter, summarizeAssets } from "../state/asset-summary";
 import type { ChartItem } from "../state/asset-summary";
+import { t, assetTypeLabel, currencyLabel } from "../i18n";
+import type { Locale } from "../i18n/locale";
+import { getActiveLocale } from "../i18n/locale";
 
 export const DRAFT_ATTACHMENT_NAME = "family-asset-guide-draft.json";
 export type PdfOutputMode = "relative" | "full";
 
 interface GeneratePdfOptions {
   mode?: PdfOutputMode;
+  locale?: Locale;
 }
 
 // 不同版本能展示哪些信息。夫妻版（full）给全；亲属版（relative）给"知情 + 执行"
@@ -88,16 +91,17 @@ export async function extractDraftFromPdf(
   password: string,
 ): Promise<Document> {
   const { PDFDocument } = await loadPdfEngine();
+  const locale = getActiveLocale();
   let pdf: PDFDocument;
   try {
     pdf = await PDFDocument.load(bytes, { password });
   } catch {
-    throw new Error("密码错误，或该 PDF 无法解锁。");
+    throw new Error(t(locale, "pdf.wrongPassword"));
   }
 
   const attachments = pdf.getAttachments();
   if (attachments.length === 0) {
-    throw new Error("此 PDF 不包含可导入的草稿数据（可能由旧版本生成）。");
+    throw new Error(t(locale, "pdf.noDraft"));
   }
 
   for (const att of attachments) {
@@ -112,7 +116,7 @@ export async function extractDraftFromPdf(
     }
   }
 
-  throw new Error("此 PDF 不包含可导入的草稿数据（可能由旧版本生成）。");
+  throw new Error(t(locale, "pdf.noDraft"));
 }
 
 const PAGE_W = 595.28;
@@ -502,8 +506,8 @@ async function renderDonutPng(
   return { image, size: displaySize };
 }
 
-function drawChartSummary(ctx: Ctx, doc: Document, caps: VersionCaps): void {
-  const summary = summarizeAssets(doc.assets);
+function drawChartSummary(ctx: Ctx, doc: Document, caps: VersionCaps, locale: Locale): void {
+  const summary = summarizeAssets(doc.assets, locale);
   const summaryH = 48;
   need(ctx, summaryH + 8);
   const y = ctx.y - summaryH;
@@ -511,13 +515,13 @@ function drawChartSummary(ctx: Ctx, doc: Document, caps: VersionCaps): void {
     x: MARGIN, y, width: CONTENT_W, height: summaryH,
     color: COLORS.amberBg, borderColor: COLORS.amberBorder, borderWidth: 0.5,
   });
-  const totalText = caps.itemAmounts ? formatCny(summary.totalCny) : formatCoarseCny(summary.totalCny);
-  ctx.page.drawText(`资产池总计 ${totalText}`, {
+  const totalText = caps.itemAmounts ? formatCny(summary.totalCny) : formatCoarseCny(summary.totalCny, locale);
+  ctx.page.drawText(t(locale, "pdf.poolTotal", { total: totalText }), {
     x: MARGIN + 12, y: y + 27, size: 13, font: ctx.font, color: COLORS.black,
   });
   const tags = [
-    summary.hasInsurance ? "不含保单" : "",
-    summary.hasDebt ? "欠款仅提醒" : "",
+    summary.hasInsurance ? t(locale, "asset.excludeInsurance") : "",
+    summary.hasDebt ? t(locale, "asset.debtReminder") : "",
   ].filter(Boolean).join(" · ");
   if (tags) {
     ctx.page.drawText(tags, {
@@ -525,9 +529,7 @@ function drawChartSummary(ctx: Ctx, doc: Document, caps: VersionCaps): void {
     });
   }
   ctx.page.drawText(
-    caps.itemAmounts
-      ? "只统计股票账户现金、银行存款、股票/基金和不动产；其他资产保留在清单明细中。"
-      : "亲属版展示资产总额与分布占比及紧急响应流程；不含每笔金额、登录凭证与密码指引。",
+    caps.itemAmounts ? t(locale, "pdf.poolNoteFull") : t(locale, "pdf.poolNoteRelative"),
     {
     x: MARGIN + 12, y: y + 11, size: 8.5, font: ctx.font, color: COLORS.muted,
     },
@@ -536,7 +538,7 @@ function drawChartSummary(ctx: Ctx, doc: Document, caps: VersionCaps): void {
 }
 
 async function drawOverviewChart(
-  ctx: Ctx, title: string, subtitle: string, items: ChartItem[], caps: VersionCaps,
+  ctx: Ctx, title: string, subtitle: string, items: ChartItem[], caps: VersionCaps, locale: Locale,
 ): Promise<void> {
   const rowGap = 28;
   const pieDisplay = 108;
@@ -562,8 +564,8 @@ async function drawOverviewChart(
   // body 区上沿；饼图与图例都在 body 区内垂直居中。
   const bodyTop = cardY + cardH - headH;
   // 总额始终展示（两版都给量级认知）；亲属版用粗粒度，每笔金额按 caps 控制。
-  const totalText = caps.itemAmounts ? formatCny(total) : formatCoarseCny(total);
-  const { image } = await renderDonutPng(ctx.pdf, items, "合计", totalText, pieDisplay);
+  const totalText = caps.itemAmounts ? formatCny(total) : formatCoarseCny(total, locale);
+  const { image } = await renderDonutPng(ctx.pdf, items, t(locale, "asset.chartTotal"), totalText, pieDisplay);
   const pieX = MARGIN + 18;
   const pieY = bodyTop - bodyH + (bodyH - pieDisplay) / 2;
   ctx.page.drawImage(image, { x: pieX, y: pieY, width: pieDisplay, height: pieDisplay });
@@ -600,64 +602,68 @@ function rgbFromHex(hex: string): ReturnType<typeof rgb> {
   return rgb(r, g, b);
 }
 
-async function drawAssetOverview(ctx: Ctx, doc: Document, caps: VersionCaps): Promise<void> {
-  const summary = summarizeAssets(doc.assets);
-  drawChartSummary(ctx, doc, caps);
+async function drawAssetOverview(ctx: Ctx, doc: Document, caps: VersionCaps, locale: Locale): Promise<void> {
+  const summary = summarizeAssets(doc.assets, locale);
+  drawChartSummary(ctx, doc, caps, locale);
   await drawOverviewChart(
     ctx,
-    "资产分布概览",
-    "只统计股票账户现金、银行存款、股票和不动产；欠款只提醒，不进入总额。",
+    t(locale, "asset.overview1Title"),
+    t(locale, "asset.overview1Subtitle"),
     summary.allocationItems,
     caps,
+    locale,
   );
   await drawOverviewChart(
     ctx,
-    "中美资产分布",
-    "美股和港股账户归海外资产，其他资产归中国资产。",
+    t(locale, "asset.overview2Title"),
+    t(locale, "asset.overview2Subtitle"),
     summary.regionItems,
     caps,
+    locale,
   );
   await drawOverviewChart(
     ctx,
-    "股票账户来源拆分",
-    "区分公司授予股票与自购股票，基金不纳入这张来源图。",
+    t(locale, "asset.overview3Title"),
+    t(locale, "asset.overview3Subtitle"),
     summary.stockSourceItems,
     caps,
+    locale,
   );
 }
 
-function buildAssetRows(a: Asset, caps: VersionCaps): AssetRow[] {
+function buildAssetRows(a: Asset, caps: VersionCaps, locale: Locale): AssetRow[] {
   const isInsurance = a.type === "insurance";
   const isStockAccount = a.type === "us_stock" || a.type === "hk_stock" || a.type === "a_stock";
   const isDebt = a.type === "debt";
+  const cur = currencyLabel(locale, a.currency);
 
   return [
     ...(isInsurance ? [
-      ...(a.insuranceKind ? [{ label: "险种", value: a.insuranceKind }] : []),
-      ...(caps.accountNumber ? [{ label: "保单号", value: a.accountNumber }] : []),
-      ...(a.insuredPerson ? [{ label: "被保人", value: a.insuredPerson }] : []),
-      { label: "缴费年限", value: a.paymentYears || "—" },
-      { label: "缴费状态", value: a.stillPaying ? "缴费中" : "已缴清" },
-      ...(caps.itemAmounts ? [{ label: "理赔额", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
+      ...(a.insuranceKind ? [{ label: t(locale, "asset.fInsuranceKind"), value: a.insuranceKind }] : []),
+      ...(caps.accountNumber ? [{ label: t(locale, "asset.fPolicyNumber"), value: a.accountNumber }] : []),
+      ...(a.insuredPerson ? [{ label: t(locale, "asset.fInsuredPerson"), value: a.insuredPerson }] : []),
+      { label: t(locale, "asset.fPaymentYears"), value: a.paymentYears || "—" },
+      { label: t(locale, "pdf.paymentStatus"), value: a.stillPaying ? t(locale, "asset.paying") : t(locale, "asset.paidUp") },
+      ...(caps.itemAmounts ? [{ label: t(locale, "asset.fClaimAmount"), value: `${cur} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
     ] : [
-      ...(caps.accountNumber ? [{ label: isDebt ? "合同/贷款编号" : "账户号码", value: a.accountNumber }] : []),
-      ...(a.accountOwner ? [{ label: "账户所有人", value: a.accountOwner }] : []),
-      ...(caps.loginCredentials && a.loginUsername ? [{ label: "登录用户名", value: a.loginUsername }] : []),
-      ...(caps.loginCredentials && a.registerEmail ? [{ label: "注册邮箱", value: a.registerEmail }] : []),
-      ...(caps.loginCredentials && a.bindPhone ? [{ label: "绑定手机", value: a.bindPhone }] : []),
-      ...(caps.contactInfo ? [{ label: "登录网址", value: a.loginUrl }] : []),
-      ...(caps.contactInfo ? [{ label: "联系电话", value: a.contactPhone }] : []),
-      ...(caps.contactInfo && a.appDownload ? [{ label: "APP 下载", value: a.appDownload }] : []),
-      ...(caps.itemAmounts && isStockAccount && a.cashValue ? [{ label: "账户现金", value: `${CURRENCY_LABELS[a.currency]} ${a.cashValue}` }] : []),
-      ...(caps.itemAmounts && isStockAccount && a.companyGrantedStockValue ? [{ label: "公司授予股票", value: `${CURRENCY_LABELS[a.currency]} ${a.companyGrantedStockValue}` }] : []),
-      ...(caps.itemAmounts ? [{ label: isDebt ? "欠款余额" : isStockAccount ? "账户总估值" : "估值", value: `${CURRENCY_LABELS[a.currency]} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
+      ...(caps.accountNumber ? [{ label: isDebt ? t(locale, "asset.fContractNumber") : t(locale, "asset.fAccountNumber"), value: a.accountNumber }] : []),
+      ...(a.accountOwner ? [{ label: t(locale, "asset.fAccountOwner"), value: a.accountOwner }] : []),
+      ...(caps.loginCredentials && a.loginUsername ? [{ label: t(locale, "asset.fLoginUsername"), value: a.loginUsername }] : []),
+      ...(caps.loginCredentials && a.registerEmail ? [{ label: t(locale, "asset.fRegisterEmail"), value: a.registerEmail }] : []),
+      ...(caps.loginCredentials && a.bindPhone ? [{ label: t(locale, "asset.fBindPhone"), value: a.bindPhone }] : []),
+      ...(caps.contactInfo ? [{ label: t(locale, "asset.fLoginUrl"), value: a.loginUrl }] : []),
+      ...(caps.contactInfo ? [{ label: t(locale, "asset.fContactPhone"), value: a.contactPhone }] : []),
+      ...(caps.contactInfo && a.appDownload ? [{ label: t(locale, "asset.fAppDownload"), value: a.appDownload }] : []),
+      ...(caps.itemAmounts && isStockAccount && a.cashValue ? [{ label: t(locale, "asset.fCashValue"), value: `${cur} ${a.cashValue}` }] : []),
+      ...(caps.itemAmounts && isStockAccount && a.companyGrantedStockValue ? [{ label: t(locale, "asset.fCompanyStock"), value: `${cur} ${a.companyGrantedStockValue}` }] : []),
+      ...(caps.itemAmounts ? [{ label: isDebt ? t(locale, "asset.fDebtBalance") : isStockAccount ? t(locale, "asset.fAccountTotalValue") : t(locale, "asset.fValue"), value: `${cur} ${a.estimatedValue}`, highlight: true, dividerBefore: true }] : []),
     ]),
-    ...(caps.beneficiary ? [{ label: "受益人", value: a.hasBeneficiary ? (a.beneficiary || "已指定（未填写姓名）") : "未指定" }] : []),
-    ...(caps.notes && a.notes ? [{ label: "备注", value: a.notes }] : []),
+    ...(caps.beneficiary ? [{ label: t(locale, "asset.fBeneficiary"), value: a.hasBeneficiary ? (a.beneficiary || t(locale, "pdf.beneficiaryNoName")) : t(locale, "asset.notDesignated") }] : []),
+    ...(caps.notes && a.notes ? [{ label: t(locale, "asset.fNotes"), value: a.notes }] : []),
   ];
 }
 
-function drawAssetGroupHeader(ctx: Ctx, label: string, count: number): void {
+function drawAssetGroupHeader(ctx: Ctx, label: string, count: number, locale: Locale): void {
   need(ctx, 36);
   ctx.y -= 4;
   const h = 24;
@@ -670,7 +676,7 @@ function drawAssetGroupHeader(ctx: Ctx, label: string, count: number): void {
     font: ctx.font,
     color: COLORS.amber700,
   });
-  const meta = `${count} 个账户 · 按估值降序`;
+  const meta = t(locale, "pdf.accountsMeta", { n: count });
   ctx.page.drawText(meta, {
     x: PAGE_W - MARGIN - ctx.font.widthOfTextAtSize(meta, 8.5) - 10,
     y: textBaseline(y, h, 8.5),
@@ -702,12 +708,12 @@ function measureAssetCardHeight(ctx: Ctx, rows: AssetRow[]): number {
 }
 
 // 资产清单章节顶部的分类计数概要，类似网页的筛选标签栏：「全部 23 · 股票 8 · …」。
-function drawCategorySummary(ctx: Ctx, doc: Document): void {
+function drawCategorySummary(ctx: Ctx, doc: Document, locale: Locale): void {
   const total = doc.assets.length;
   if (total === 0) return;
-  const groups = groupAssetsByFilter(doc.assets);
+  const groups = groupAssetsByFilter(doc.assets, locale);
   const chips = [
-    { label: "全部", count: total, primary: true },
+    { label: t(locale, "filter.all"), count: total, primary: true },
     ...groups.map((g) => ({ label: g.label, count: g.assets.length, primary: false })),
   ];
 
@@ -778,25 +784,25 @@ function drawCategorySummary(ctx: Ctx, doc: Document): void {
   ctx.y = cardY - 8;
 }
 
-function drawGroupedAssets(ctx: Ctx, doc: Document, caps: VersionCaps): void {
-  const groups = groupAssetsByFilter(doc.assets);
+function drawGroupedAssets(ctx: Ctx, doc: Document, caps: VersionCaps, locale: Locale): void {
+  const groups = groupAssetsByFilter(doc.assets, locale);
   if (groups.length === 0) {
-    drawText(ctx, "（未填写资产信息）", 10, COLORS.light);
+    drawText(ctx, t(locale, "pdf.noAssets"), 10, COLORS.light);
     return;
   }
 
   let globalNo = 1;
   for (const group of groups) {
     // 避免组标题孤立在页尾：当「标题 + 首个卡片」放不下时先换页。
-    const firstRows = buildAssetRows(group.assets[0]!, caps);
+    const firstRows = buildAssetRows(group.assets[0]!, caps, locale);
     const firstCardH = measureAssetCardHeight(ctx, firstRows);
     if (ctx.y - (34 + firstCardH + 6) < MARGIN + 30) newPage(ctx);
 
-    drawAssetGroupHeader(ctx, group.label, group.assets.length);
+    drawAssetGroupHeader(ctx, group.label, group.assets.length, locale);
     for (const asset of group.assets) {
       const num = String(globalNo++).padStart(2, "0");
-      const institution = asset.institution || ASSET_TYPE_LABELS[asset.type];
-      drawAssetCard(ctx, num, institution, ASSET_TYPE_LABELS[asset.type], buildAssetRows(asset, caps));
+      const institution = asset.institution || assetTypeLabel(locale, asset.type);
+      drawAssetCard(ctx, num, institution, assetTypeLabel(locale, asset.type), buildAssetRows(asset, caps, locale));
     }
     ctx.y -= 6;
   }
@@ -896,7 +902,7 @@ async function fetchWithCache(url: string, onProgress?: ProgressFn): Promise<Arr
   } catch {
     const resp = await fetch(url);
     if (resp.ok) return readWithProgress(resp, fallbackTotal, onProgress);
-    throw new Error("无法加载字体文件。");
+    throw new Error(t(getActiveLocale(), "pdf.fontLoadFailed"));
   }
 }
 
@@ -954,8 +960,9 @@ export async function generatePdf(
   options: GeneratePdfOptions = {},
 ): Promise<Uint8Array> {
   const mode = options.mode ?? "full";
+  const locale = options.locale ?? getActiveLocale();
   const caps = capsForMode(mode);
-  const modeLabel = mode === "full" ? "夫妻版" : "亲属版";
+  const modeLabel = mode === "full" ? t(locale, "password.fullTitle") : t(locale, "password.relativeTitle");
   const { PDFDocument, fontkit } = await loadPdfEngine();
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
@@ -964,7 +971,7 @@ export async function generatePdf(
     const fontBytes = await loadFont();
     font = await pdf.embedFont(fontBytes, { subset: false });
   } catch {
-    onStatus?.("当前字体不兼容，正在下载备用字体…");
+    onStatus?.(t(locale, "pdf.fontFallback"));
     let fallbackBytes: ArrayBuffer;
     try {
       fallbackBytes = await fetchWithCache("NotoSansSC-Regular.ttf");
@@ -979,9 +986,10 @@ export async function generatePdf(
   ctx.page.drawRectangle({ x: 0, y: PAGE_H - 6, width: PAGE_W, height: 6, color: COLORS.amber700 });
   ctx.y = PAGE_H - 160;
 
-  ctx.page.drawText("家庭资产应急手册", { x: MARGIN, y: ctx.y, size: 28, font, color: COLORS.black });
+  const coverTitle = t(locale, "toolbar.logoFull");
+  ctx.page.drawText(coverTitle, { x: MARGIN, y: ctx.y, size: 28, font, color: COLORS.black });
   ctx.page.drawText(modeLabel, {
-    x: MARGIN + ctx.font.widthOfTextAtSize("家庭资产应急手册", 28) + 16,
+    x: MARGIN + ctx.font.widthOfTextAtSize(coverTitle, 28) + 16,
     y: ctx.y + 3,
     size: 13,
     font,
@@ -991,37 +999,34 @@ export async function generatePdf(
   ctx.page.drawRectangle({ x: MARGIN, y: ctx.y, width: 170, height: 3, color: COLORS.amber700 });
   ctx.y -= 36;
 
-  ctx.page.drawText(`生成日期：${new Date().toISOString().slice(0, 10)}`, { x: MARGIN, y: ctx.y, size: 10, font, color: COLORS.light });
+  ctx.page.drawText(`${t(locale, "pdf.generatedOn")}${new Date().toISOString().slice(0, 10)}`, { x: MARGIN, y: ctx.y, size: 10, font, color: COLORS.light });
   ctx.y -= 30;
 
-  drawBoxedText(ctx, "⚠ 本文件使用 AES-256 加密，请妥善保管解锁密码。", 9.5, 32, {
+  drawBoxedText(ctx, t(locale, "pdf.coverEncrypt"), 9.5, 32, {
     bgColor: COLORS.amberBg, borderColor: COLORS.amberBorder, textColor: COLORS.amber700,
   });
   // 夫妻版在封面给一句版本说明（与黄框留出间距）；亲属版不再赘述。
   if (mode === "full") {
     ctx.y -= 18;
-    drawText(
-      ctx,
-      "夫妻版：账户信息 + 具体金额 + 密码指引 + 紧急响应流程 + 自定义章节，\n并嵌入可导入草稿，便于日后继续编辑。",
-      9.5,
-      COLORS.muted,
-    );
+    drawText(ctx, t(locale, "pdf.coverFullDesc"), 9.5, COLORS.muted);
   }
 
   const cnNum = ["一", "二", "三", "四", "五"];
+  const chapterBadge = (i: number) => (locale === "en" ? `Chapter ${i + 1}` : `第${cnNum[i]}章`);
+  const tocItemText = (name: string, i: number) => (locale === "en" ? `${i + 1}. ${name}` : `${cnNum[i]}、${name}`);
   let chapterNo = 0;
 
   // ===== 目录 =====
   if (caps.toc) {
     newPage(ctx);
-    drawText(ctx, "目录", 20, COLORS.black);
+    drawText(ctx, t(locale, "common.toc"), 20, COLORS.black);
     ctx.y -= 8;
 
-    const tocNames = ["资产清单"];
-    if (caps.passwordGuide && !doc.accessRemoved) tocNames.push("密码指引");
-    if (caps.sop && !doc.sopRemoved) tocNames.push("紧急响应流程");
-    if (caps.custom && !doc.customRemoved && doc.customSections.length > 0) tocNames.push("自定义章节");
-    const tocItems = tocNames.map((name, i) => `${cnNum[i]}、${name}`);
+    const tocNames = [t(locale, "pdf.chapterAssets")];
+    if (caps.passwordGuide && !doc.accessRemoved) tocNames.push(t(locale, "pdf.chapterAccess"));
+    if (caps.sop && !doc.sopRemoved) tocNames.push(t(locale, "pdf.chapterSop"));
+    if (caps.custom && !doc.customRemoved && doc.customSections.length > 0) tocNames.push(t(locale, "pdf.chapterCustom"));
+    const tocItems = tocNames.map((name, i) => tocItemText(name, i));
     for (const item of tocItems) {
       drawBoxedText(ctx, item, 10.5, 30, {
         bgColor: COLORS.white, borderColor: COLORS.border, textColor: COLORS.body,
@@ -1031,20 +1036,22 @@ export async function generatePdf(
 
   // ===== 一、资产清单 =====
   newPage(ctx);
-  drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "资产清单");
-  drawCategorySummary(ctx, doc);
-  if (caps.totalAndCharts) await drawAssetOverview(ctx, doc, caps);
-  drawGroupedAssets(ctx, doc, caps);
+  drawSectionHeader(ctx, chapterBadge(chapterNo++), t(locale, "pdf.chapterAssets"));
+  drawCategorySummary(ctx, doc, locale);
+  if (caps.totalAndCharts) await drawAssetOverview(ctx, doc, caps, locale);
+  drawGroupedAssets(ctx, doc, caps, locale);
 
   // ===== 二、密码指引 =====
   if (caps.passwordGuide && !doc.accessRemoved) {
     newPage(ctx);
-    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "密码指引");
+    drawSectionHeader(ctx, chapterBadge(chapterNo++), t(locale, "pdf.chapterAccess"));
 
     const methodLabels: Record<string, string> = {
-      totp: "TOTP 验证器", sms: "短信验证", hardware_key: "硬件密钥",
-      email: "邮箱验证", other: "其他", none: "无",
+      totp: t(locale, "access.twoFactorTotp"), sms: t(locale, "access.twoFactorSms"),
+      hardware_key: t(locale, "access.twoFactorHardware"), email: t(locale, "access.twoFactorEmail"),
+      other: t(locale, "access.twoFactorOther"), none: t(locale, "access.twoFactorNone"),
     };
+    const sep = locale === "en" ? ", " : "、";
 
     if (doc.access.seals.length > 0) {
       for (let i = 0; i < doc.access.seals.length; i++) {
@@ -1052,29 +1059,29 @@ export async function generatePdf(
         const linkedNames = s.linkedAssetIds
           .map((id) => doc.assets.find((a) => a.id === id))
           .filter(Boolean)
-          .map((a) => a!.institution || ASSET_TYPE_LABELS[a!.type])
-          .join("、");
+          .map((a) => a!.institution || assetTypeLabel(locale, a!.type))
+          .join(sep);
         drawCard(ctx, String(i + 1).padStart(2, "0"), [
-          { label: "标签", value: s.label },
-          { label: "存放位置", value: s.location },
-          ...(s.passwordHint ? [{ label: "密码说明", value: s.passwordHint }] : []),
+          { label: t(locale, "pdf.sealLabel"), value: s.label },
+          { label: t(locale, "access.fLocation"), value: s.location },
+          ...(s.passwordHint ? [{ label: t(locale, "access.fPasswordHint"), value: s.passwordHint }] : []),
           ...(s.twoFactorMethod !== "none" ? [
-            { label: "2FA 方式", value: methodLabels[s.twoFactorMethod] || s.twoFactorMethod },
-            ...(s.twoFactorRecovery ? [{ label: "2FA 恢复", value: s.twoFactorRecovery }] : []),
+            { label: t(locale, "access.fTwoFactor"), value: methodLabels[s.twoFactorMethod] || s.twoFactorMethod },
+            ...(s.twoFactorRecovery ? [{ label: t(locale, "access.fTwoFactorRecovery"), value: s.twoFactorRecovery }] : []),
           ] : []),
-          ...(linkedNames ? [{ label: "关联资产", value: linkedNames }] : []),
-          ...(s.notes ? [{ label: "备注", value: s.notes }] : []),
+          ...(linkedNames ? [{ label: t(locale, "access.fLinkedAssets"), value: linkedNames }] : []),
+          ...(s.notes ? [{ label: t(locale, "asset.fNotes"), value: s.notes }] : []),
         ]);
       }
     } else {
-      drawText(ctx, "（未填写密码指引信息）", 10, COLORS.light);
+      drawText(ctx, t(locale, "pdf.noAccess"), 10, COLORS.light);
     }
   }
 
   // ===== 三、SOP =====
   if (caps.sop && !doc.sopRemoved) {
     newPage(ctx);
-    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "紧急响应流程");
+    drawSectionHeader(ctx, chapterBadge(chapterNo++), t(locale, "pdf.chapterSop"));
 
     for (let i = 0; i < doc.sopStages.length; i++) {
       const stage = doc.sopStages[i]!;
@@ -1085,7 +1092,7 @@ export async function generatePdf(
   // ===== 四、自定义 =====
   if (caps.custom && !doc.customRemoved && doc.customSections.length > 0) {
     newPage(ctx);
-    drawSectionHeader(ctx, `第${cnNum[chapterNo++]}章`, "自定义章节");
+    drawSectionHeader(ctx, chapterBadge(chapterNo++), t(locale, "pdf.chapterCustom"));
 
     for (const s of doc.customSections) {
       need(ctx, 40);
@@ -1102,7 +1109,7 @@ export async function generatePdf(
 
   // ===== 页脚 =====
   const pages = pdf.getPages();
-  const footer = `家庭资产应急手册 · ${modeLabel} · 机密文件`;
+  const footer = `${t(locale, "toolbar.logoFull")} · ${modeLabel} · ${t(locale, "pdf.confidential")}`;
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i]!;
     p.drawLine({
@@ -1137,10 +1144,10 @@ export async function generatePdf(
   return await pdf.save();
 }
 
-export async function downloadPdf(bytes: Uint8Array, mode: PdfOutputMode = "full") {
+export async function downloadPdf(bytes: Uint8Array, mode: PdfOutputMode = "full", locale: Locale = getActiveLocale()) {
   const ts = new Date().toISOString().slice(0, 10);
-  const suffix = mode === "full" ? "夫妻版" : "亲属版";
-  const fileName = `家庭应急手册-${suffix}-${ts}.pdf`;
+  const suffix = mode === "full" ? t(locale, "password.fullTitle") : t(locale, "password.relativeTitle");
+  const fileName = t(locale, "pdf.fileName", { mode: suffix, date: ts });
   const blob = new Blob([bytes], { type: "application/pdf" });
 
   // 直接下载文件，不走 navigator.share（在桌面端会弹出系统分享菜单，体验不佳）。

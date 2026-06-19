@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAppState } from "../state/context";
+import { t } from "../i18n";
 import "./TableOfContents.css";
 
 interface Chapter {
@@ -9,20 +10,20 @@ interface Chapter {
 }
 
 export function TableOfContents() {
-  const { doc, setOpenPasswordModal } = useAppState();
+  const { doc, setOpenPasswordModal, locale } = useAppState();
   const [activeId, setActiveId] = useState("chapter-assets");
 
   const chapters: Chapter[] = [
-    { id: "chapter-assets", label: "资产清单", count: doc.assets.length },
+    { id: "chapter-assets", label: t(locale, "chapters.assets"), count: doc.assets.length },
     ...(doc.accessRemoved
       ? []
-      : [{ id: "chapter-access", label: "密码指引", count: doc.access.seals.length }]),
+      : [{ id: "chapter-access", label: t(locale, "chapters.access"), count: doc.access.seals.length }]),
     ...(doc.sopRemoved
       ? []
-      : [{ id: "chapter-sop", label: "紧急响应流程", count: doc.sopStages.length }]),
+      : [{ id: "chapter-sop", label: t(locale, "chapters.sop"), count: doc.sopStages.length }]),
     ...(doc.customRemoved
       ? []
-      : [{ id: "chapter-custom", label: "自定义区", count: doc.customSections.length }]),
+      : [{ id: "chapter-custom", label: t(locale, "chapters.custom"), count: doc.customSections.length }]),
   ];
 
   useEffect(() => {
@@ -56,7 +57,7 @@ export function TableOfContents() {
   return (
     <aside className="toc">
       <div className="toc-inner">
-        <div className="toc-title">目录</div>
+        <div className="toc-title">{t(locale, "common.toc")}</div>
         <nav className="toc-nav">
           {chapters.map((ch) => (
             <button
@@ -80,7 +81,7 @@ export function TableOfContents() {
             <line x1="16" y1="13" x2="8" y2="13" />
             <line x1="16" y1="17" x2="8" y2="17" />
           </svg>
-          生成 PDF
+          {t(locale, "common.generatePdf")}
         </button>
       </div>
     </aside>

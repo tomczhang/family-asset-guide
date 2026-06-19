@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppState } from "../state/context";
 import type { CustomSection } from "../state/types";
+import type { Locale } from "../i18n/locale";
+import { t } from "../i18n";
 
 function CollapsedSection({
   section,
   index,
+  locale,
   onEdit,
   onDelete,
 }: {
   section: CustomSection;
   index: number;
+  locale: Locale;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -18,20 +22,20 @@ function CollapsedSection({
       <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
         <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
         <span style={{ fontSize: 13, color: "var(--stone-700)", fontWeight: 500 }}>
-          {section.title || "未命名章节"}
+          {section.title || t(locale, "custom.unnamedSection")}
         </span>
         <span style={{ fontSize: 12, color: "var(--stone-400)", marginLeft: "auto" }}>
-          {section.content ? `${section.content.split("\n").length} 行` : "空"}
+          {section.content ? t(locale, "custom.lineCount", { n: section.content.split("\n").length }) : t(locale, "custom.empty")}
         </span>
-        <button className="btn btn-ghost btn-sm" onClick={onEdit}>编辑</button>
-        <button className="btn btn-ghost btn-sm" onClick={onDelete}>删除</button>
+        <button className="btn btn-ghost btn-sm" onClick={onEdit}>{t(locale, "common.edit")}</button>
+        <button className="btn btn-ghost btn-sm" onClick={onDelete}>{t(locale, "common.delete")}</button>
       </div>
     </div>
   );
 }
 
 export function CustomSectionEditor() {
-  const { doc, dispatch, confirm } = useAppState();
+  const { doc, dispatch, confirm, locale } = useAppState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const prevCountRef = useRef(doc.customSections.length);
   const sectionRef = useRef<HTMLElement>(null);
@@ -64,25 +68,25 @@ export function CustomSectionEditor() {
   return (
     <section className="section" id="chapter-custom" ref={sectionRef}>
       <div className="section-header">
-        <span className="section-badge">自定义区</span>
+        <span className="section-badge">{t(locale, "custom.badge")}</span>
         <button
           className="btn btn-ghost btn-sm"
           style={{ marginLeft: "auto" }}
           onClick={async () => {
             const ok = await confirm({
-              title: "删除「自定义区」模块",
-              message: "删除后该模块将不再显示，也不会出现在目录和导出的 PDF 中。",
-              confirmText: "删除模块",
+              title: t(locale, "confirmModule.title", { module: t(locale, "custom.badge") }),
+              message: t(locale, "confirmModule.message"),
+              confirmText: t(locale, "common.deleteModule"),
             });
             if (ok) dispatch({ type: "REMOVE_CUSTOM_MODULE" });
           }}
         >
-          删除模块
+          {t(locale, "common.deleteModule")}
         </button>
       </div>
       <div className="section-body">
         <p style={{ color: "var(--stone-500)", fontSize: 13, marginBottom: "var(--sp-4)" }}>
-          添加任意自定义内容章节，例如遗嘱提示、家族信托说明、律师联系方式等。
+          {t(locale, "custom.intro")}
         </p>
 
         {doc.customSections.map((section, i) => {
@@ -92,6 +96,7 @@ export function CustomSectionEditor() {
                 key={section.id}
                 section={section}
                 index={i}
+                locale={locale}
                 onEdit={() => setExpandedId(section.id)}
                 onDelete={() => dispatch({ type: "REMOVE_CUSTOM_SECTION", id: section.id })}
               />
@@ -103,16 +108,16 @@ export function CustomSectionEditor() {
               <div className="card-header">
                 <span className="card-number">{String(i + 1).padStart(2, "0")}</span>
                 <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setExpandedId(null)}>收起</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "REMOVE_CUSTOM_SECTION", id: section.id })}>删除</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setExpandedId(null)}>{t(locale, "common.collapse")}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "REMOVE_CUSTOM_SECTION", id: section.id })}>{t(locale, "common.delete")}</button>
                 </div>
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">章节标题</label>
+                  <label className="field-label">{t(locale, "custom.fTitle")}</label>
                   <input
                     className="field-input"
-                    placeholder="例：律师与会计师联系方式"
+                    placeholder={t(locale, "custom.fTitlePlaceholder")}
                     value={section.title}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_CUSTOM_SECTION", id: section.id, patch: { title: e.target.value } })
@@ -124,11 +129,11 @@ export function CustomSectionEditor() {
               </div>
               <div className="field-group full">
                 <div className="field">
-                  <label className="field-label">内容（支持 Markdown）</label>
+                  <label className="field-label">{t(locale, "custom.fContent")}</label>
                   <textarea
                     className="field-input"
                     rows={6}
-                    placeholder="在此编写内容..."
+                    placeholder={t(locale, "custom.fContentPlaceholder")}
                     value={section.content}
                     onChange={(e) =>
                       dispatch({ type: "UPDATE_CUSTOM_SECTION", id: section.id, patch: { content: e.target.value } })
@@ -147,7 +152,7 @@ export function CustomSectionEditor() {
           className="btn btn-secondary"
           onClick={() => dispatch({ type: "ADD_CUSTOM_SECTION" })}
         >
-          + 添加自定义章节
+          {t(locale, "custom.add")}
         </button>
       </div>
     </section>

@@ -13,9 +13,10 @@ import { MobileTocOverlay } from "./components/MobileTocOverlay";
 import { PasswordModal } from "./components/PasswordModal";
 import { generatePdf, downloadPdf, prefetchFont } from "./pdf/generate";
 import type { PdfOutputMode } from "./pdf/generate";
+import { t } from "./i18n";
 
 function AppContent() {
-  const { doc, dispatch, openPasswordModal, setOpenPasswordModal } = useAppState();
+  const { doc, dispatch, openPasswordModal, setOpenPasswordModal, locale } = useAppState();
   const isEmpty = doc.assets.length === 0 && doc.access.seals.length === 0;
   const isMobile = useIsMobile();
   const [currentStep, setCurrentStep] = useState(0);
@@ -58,16 +59,16 @@ function AppContent() {
   };
 
   const steps: Array<{ Editor: () => JSX.Element | null; label: string; count: number }> = [
-    { Editor: AssetEditor, label: "资产清单", count: doc.assets.length },
+    { Editor: AssetEditor, label: t(locale, "chapters.assets"), count: doc.assets.length },
     ...(doc.accessRemoved
       ? []
-      : [{ Editor: AccessEditor, label: "密码指引", count: doc.access.seals.length }]),
+      : [{ Editor: AccessEditor, label: t(locale, "chapters.access"), count: doc.access.seals.length }]),
     ...(doc.sopRemoved
       ? []
-      : [{ Editor: SopEditor, label: "紧急响应流程", count: doc.sopStages.length }]),
+      : [{ Editor: SopEditor, label: t(locale, "chapters.sop"), count: doc.sopStages.length }]),
     ...(doc.customRemoved
       ? []
-      : [{ Editor: CustomSectionEditor, label: "自定义区", count: doc.customSections.length }]),
+      : [{ Editor: CustomSectionEditor, label: t(locale, "chapters.custom"), count: doc.customSections.length }]),
   ];
   const safeStep = Math.min(currentStep, steps.length - 1);
   const stepLabels = steps.map((s) => s.label);
@@ -78,17 +79,17 @@ function AppContent() {
       setPdfGenerating(true);
       setPdfStatus("");
       try {
-        const bytes = await generatePdf(doc, password, setPdfStatus, { mode });
-        await downloadPdf(bytes, mode);
+        const bytes = await generatePdf(doc, password, setPdfStatus, { mode, locale });
+        await downloadPdf(bytes, mode, locale);
         setOpenPasswordModal(false);
       } catch (err) {
-        alert(`PDF 生成失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        alert(`${t(locale, "app.pdfFailed")}: ${err instanceof Error ? err.message : t(locale, "common.unknownError")}`);
       } finally {
         setPdfGenerating(false);
         setPdfStatus("");
       }
     },
-    [doc, setOpenPasswordModal],
+    [doc, setOpenPasswordModal, locale],
   );
 
   const goToStep = useCallback((step: number) => {
@@ -103,16 +104,16 @@ function AppContent() {
         <div className={`font-hint font-hint--${fontStatus}`} role="status">
           {fontStatus === "loading" && (
             <>
-              <span>正在下载生成 PDF 的字体 {fontProgress}%，可先填写信息，下载完成前请保持联网…</span>
+              <span>{t(locale, "app.fontLoading", { percent: fontProgress })}</span>
               <span className="font-hint-bar">
                 <i style={{ width: `${fontProgress}%` }} />
               </span>
             </>
           )}
-          {fontStatus === "ready" && "✓ 字体已下载完成，现在可断网离线生成 PDF"}
+          {fontStatus === "ready" && t(locale, "app.fontReady")}
           {fontStatus === "error" && (
             <>
-              ⚠ 字体未能预加载，生成 PDF 时请保持联网
+              {t(locale, "app.fontError")}
               <button type="button" className="font-hint-close" onClick={() => setFontHintVisible(false)}>
                 ✕
               </button>
@@ -125,11 +126,11 @@ function AppContent() {
           <div className="app-main-inner">
             <div style={{ marginBottom: "var(--sp-8)" }}>
               <h1 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: "var(--stone-900)", marginBottom: "var(--sp-2)" }}>
-                家庭资产<span className="gradient-text">应急手册</span>
+                {t(locale, "app.titleLead")}<span className="gradient-text">{t(locale, "app.titleHighlight")}</span>
               </h1>
               {!isMobile && (
                 <p style={{ color: "var(--stone-500)", fontSize: 14 }}>
-                  维护家庭应急手册是一个晴天修屋顶的操作，雨什么时候下我们说不准，但趁着晴天把屋顶修结实，才能给自己和家人一份真的踏实。
+                  {t(locale, "app.subtitle")}
                 </p>
               )}
             </div>
@@ -137,10 +138,10 @@ function AppContent() {
             {!isMobile && (
               <div className="warning-banner" style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--sp-2)" }}>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: 13, lineHeight: 1.8 }}>
-                  <li>✈️ 完全离线运行，数据不经过任何服务器，零泄露风险</li>
-                  <li>🔐 导出为 AES-256 加密 PDF，军事级安全防护</li>
-                  <li>⚡ 选机构 → 填账号、资产、密码保存地 → 一键生成，三步极简</li>
-                  <li>⚠️ 所有数据仅存在于当前页面，关闭即丢失，请及时导出草稿</li>
+                  <li>{t(locale, "app.feature1")}</li>
+                  <li>{t(locale, "app.feature2")}</li>
+                  <li>{t(locale, "app.feature3")}</li>
+                  <li>{t(locale, "app.feature4")}</li>
                 </ul>
               </div>
             )}
@@ -157,16 +158,16 @@ function AppContent() {
                 }}
               >
                 <p style={{ fontSize: 15, fontWeight: 600, color: "var(--stone-700)", marginBottom: "var(--sp-2)" }}>
-                  还没有数据，先看看完整示例？
+                  {t(locale, "app.emptyTitle")}
                 </p>
                 <p style={{ fontSize: 13, color: "var(--stone-500)", marginBottom: "var(--sp-4)" }}>
-                  点击下方按钮导入演示数据，快速预览应急手册的完整效果
+                  {t(locale, "app.emptyBody")}
                 </p>
                 <button
                   className="btn btn-amber"
-                  onClick={() => dispatch({ type: "LOAD_DOCUMENT", document: createMockDocument() })}
+                  onClick={() => dispatch({ type: "LOAD_DOCUMENT", document: createMockDocument(locale) })}
                 >
-                  导入演示数据
+                  {t(locale, "toolbar.demoDataLong")}
                 </button>
               </div>
             )}
@@ -222,10 +223,10 @@ function AppContent() {
       {showWechatTip && (
         <div className="modal-overlay" onClick={() => setShowWechatTip(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">请在浏览器中打开</div>
+            <div className="modal-title">{t(locale, "app.wechatTitle")}</div>
             <p style={{ color: "var(--stone-600)", fontSize: 13, lineHeight: 1.7 }}>
-              微信内置浏览器不支持生成 PDF 文件。请点击右上角
-              <strong> ··· </strong>菜单，选择<strong>「在浏览器中打开」</strong>，然后再生成 PDF。
+              {t(locale, "app.wechatBodyBefore")}
+              <strong> ··· </strong>{t(locale, "app.wechatBodyAfter")}<strong>{t(locale, "app.wechatBodyMenu")}</strong>{t(locale, "app.wechatBodyEnd")}
             </p>
             <div style={{ marginTop: "var(--sp-4)" }}>
               <button
@@ -236,12 +237,12 @@ function AppContent() {
                   setShowWechatTip(false);
                 }}
               >
-                复制页面链接
+                {t(locale, "app.wechatCopyLink")}
               </button>
             </div>
             <div className="modal-actions">
               <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowWechatTip(false)}>
-                知道了
+                {t(locale, "app.wechatGotIt")}
               </button>
             </div>
           </div>

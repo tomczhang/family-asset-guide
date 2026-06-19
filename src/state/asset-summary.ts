@@ -1,16 +1,27 @@
 import type { Asset, AssetType, Currency } from "./types";
+import type { Locale } from "../i18n/locale";
+import { getActiveLocale } from "../i18n/locale";
+import { t } from "../i18n";
 
 export type AssetFilter = "all" | "stock" | "insurance" | "bank_deposit" | "real_estate" | "debt" | "other";
 
-export const ASSET_FILTERS: Array<{ id: AssetFilter; label: string }> = [
-  { id: "all", label: "全部" },
-  { id: "stock", label: "股票" },
-  { id: "insurance", label: "保险" },
-  { id: "bank_deposit", label: "存款" },
-  { id: "real_estate", label: "不动产" },
-  { id: "debt", label: "欠款" },
-  { id: "other", label: "其他" },
+export const ASSET_FILTER_IDS: AssetFilter[] = [
+  "all",
+  "stock",
+  "insurance",
+  "bank_deposit",
+  "real_estate",
+  "debt",
+  "other",
 ];
+
+export function assetFilterLabel(id: AssetFilter, locale: Locale = getActiveLocale()): string {
+  return t(locale, `filter.${id}`);
+}
+
+export function getAssetFilters(locale: Locale = getActiveLocale()): Array<{ id: AssetFilter; label: string }> {
+  return ASSET_FILTER_IDS.map((id) => ({ id, label: assetFilterLabel(id, locale) }));
+}
 
 export const CNY_RATES: Record<Currency, number> = {
   CNY: 1,
@@ -60,12 +71,16 @@ export function formatCny(value: number): string {
   return `¥${Math.round(value).toLocaleString()}`;
 }
 
-// 亲属版用的粗粒度金额：向下取整到 100 万，例如 15,473,500 → "1,500 万+"。
-// 既给出量级认知，又不暴露精确数字。
-export function formatCoarseCny(value: number): string {
-  if (value < 1_000_000) return "100 万以内";
+// 亲属版用的粗粒度金额，给出量级认知但不暴露精确数字。
+// 中文向下取整到 100 万（"1,500 万+"）；英文按百万取整（"$15M+"）。
+export function formatCoarseCny(value: number, locale: Locale = getActiveLocale()): string {
+  if (value < 1_000_000) return t(locale, "coarse.under");
+  if (locale === "en") {
+    const millions = Math.floor(value / 1_000_000);
+    return t(locale, "coarse.wanSuffix", { n: millions.toLocaleString() });
+  }
   const wan = Math.floor(value / 1_000_000) * 100;
-  return `${wan.toLocaleString()} 万+`;
+  return t(locale, "coarse.wanSuffix", { n: wan.toLocaleString() });
 }
 
 export function isStockAccount(type: AssetType): boolean {
@@ -122,12 +137,16 @@ export function sortAssetsByEstimatedDesc(assets: Asset[]): Asset[] {
   return [...assets].sort((a, b) => assetEstimatedCny(b) - assetEstimatedCny(a));
 }
 
-export function groupAssetsByFilter(assets: Asset[]): Array<{ id: AssetFilter; label: string; assets: Asset[] }> {
-  return ASSET_FILTERS
-    .filter((filter) => filter.id !== "all")
-    .map((filter) => ({
-      ...filter,
-      assets: sortAssetsByEstimatedDesc(assets.filter((asset) => filterForAsset(asset.type) === filter.id)),
+export function groupAssetsByFilter(
+  assets: Asset[],
+  locale: Locale = getActiveLocale(),
+): Array<{ id: AssetFilter; label: string; assets: Asset[] }> {
+  return ASSET_FILTER_IDS
+    .filter((id) => id !== "all")
+    .map((id) => ({
+      id,
+      label: assetFilterLabel(id, locale),
+      assets: sortAssetsByEstimatedDesc(assets.filter((asset) => filterForAsset(asset.type) === id)),
     }))
     .filter((group) => group.assets.length > 0);
 }
@@ -188,11 +207,12 @@ export function calculateAssetPool(assets: Asset[]): AssetPoolTotals {
   );
 }
 
-export function summarizeAssets(assets: Asset[]): AssetSummary {
+export function summarizeAssets(assets: Asset[], locale: Locale = getActiveLocale()): AssetSummary {
   const totals = calculateAssetPool(assets);
   const totalCny = totals.stockCash + totals.bankDeposit + totals.stockPosition + totals.realEstate;
   const companyGrantedStock = Math.min(totals.companyGrantedStock, totals.stockPosition);
   const selfPurchasedStock = Math.max(totals.stockPosition - companyGrantedStock, 0);
+  const ct = (key: string) => t(locale, `chart.${key}`);
 
   return {
     totals,
@@ -200,19 +220,19 @@ export function summarizeAssets(assets: Asset[]): AssetSummary {
     hasInsurance: assets.some((a) => a.type === "insurance"),
     hasDebt: assets.some((a) => a.type === "debt"),
     allocationItems: [
-      { key: "stockCash", label: "股票账户现金", description: "券商账户内现金余额", value: totals.stockCash, color: "#059669" },
-      { key: "bankDeposit", label: "银行存款", description: "银行账户存款余额", value: totals.bankDeposit, color: "#14b8a6" },
-      { key: "stockPosition", label: "股票", description: "股票非现金部分 + 基金", value: totals.stockPosition, color: "#2563eb" },
-      { key: "realEstate", label: "不动产", description: "房产等不动产估值", value: totals.realEstate, color: "#b45309" },
+      { key: "stockCash", label: ct("stockCash"), description: ct("stockCashDesc"), value: totals.stockCash, color: "#059669" },
+      { key: "bankDeposit", label: ct("bankDeposit"), description: ct("bankDepositDesc"), value: totals.bankDeposit, color: "#14b8a6" },
+      { key: "stockPosition", label: ct("stockPosition"), description: ct("stockPositionDesc"), value: totals.stockPosition, color: "#2563eb" },
+      { key: "realEstate", label: ct("realEstate"), description: ct("realEstateDesc"), value: totals.realEstate, color: "#b45309" },
     ],
     regionItems: [
-      { key: "overseas", label: "海外资产", description: "美股账户 + 港股账户", value: totals.overseas, color: "#4f46e5" },
-      { key: "china", label: "中国资产", description: "A股、基金、存款、不动产", value: totals.china, color: "#ca8a04" },
+      { key: "overseas", label: ct("overseas"), description: ct("overseasDesc"), value: totals.overseas, color: "#4f46e5" },
+      { key: "china", label: ct("china"), description: ct("chinaDesc"), value: totals.china, color: "#ca8a04" },
     ],
     stockSourceItems: [
-      { key: "companyGrantedStock", label: "公司授予股票", description: "已标注的公司授予股票市值", value: companyGrantedStock, color: "#7c3aed" },
-      { key: "selfPurchasedStock", label: "自购股票", description: "股票账户非现金部分扣除公司授予股票", value: selfPurchasedStock, color: "#2563eb" },
-      { key: "stockCash", label: "股票账户现金", description: "券商账户内现金余额", value: totals.stockCash, color: "#059669" },
+      { key: "companyGrantedStock", label: ct("companyGrantedStock"), description: ct("companyGrantedStockDesc"), value: companyGrantedStock, color: "#7c3aed" },
+      { key: "selfPurchasedStock", label: ct("selfPurchasedStock"), description: ct("selfPurchasedStockDesc"), value: selfPurchasedStock, color: "#2563eb" },
+      { key: "stockCash", label: ct("stockCash"), description: ct("stockCashDesc"), value: totals.stockCash, color: "#059669" },
     ],
   };
 }

@@ -41,6 +41,22 @@
   gap: var(--sp-2);
 }
 
+.toolbar-lang-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--stone-400);
+}
+
+.toolbar-lang-btn--on {
+  color: var(--amber-700);
+}
+
+.toolbar-dropdown-item--active {
+  color: var(--amber-700);
+  font-weight: 600;
+}
+
 .toolbar-privacy {
   display: flex;
   align-items: center;

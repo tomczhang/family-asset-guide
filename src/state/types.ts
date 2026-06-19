@@ -11,30 +11,9 @@ export type AssetType =
   | "debt"
   | "other";
 
-export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-  us_stock: "美股",
-  hk_stock: "港股",
-  a_stock: "A股",
-  fund: "基金",
-  bank_deposit: "银行存款",
-  insurance: "保险",
-  real_estate: "不动产",
-  crypto: "加密货币",
-  debt: "欠款",
-  other: "其他",
-};
+// 资产类型 / 货币的显示标签已按语言迁移到 src/i18n（assetTypeLabel / currencyLabel）。
 
 export type Currency = "CNY" | "USD" | "HKD" | "GBP" | "EUR" | "JPY" | "OTHER";
-
-export const CURRENCY_LABELS: Record<Currency, string> = {
-  CNY: "人民币",
-  USD: "美元",
-  HKD: "港币",
-  GBP: "英镑",
-  EUR: "欧元",
-  JPY: "日元",
-  OTHER: "其他",
-};
 
 export interface Asset {
   id: string;

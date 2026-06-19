@@ -1,3 +1,5 @@
+import { useAppState } from "../state/context";
+import { t } from "../i18n";
 import "./MobileTocOverlay.css";
 
 interface Props {
@@ -10,14 +12,15 @@ interface Props {
 }
 
 export function MobileTocOverlay({ open, currentStep, stepLabels, stepCounts, onSelect, onClose }: Props) {
+  const { locale } = useAppState();
   if (!open) return null;
 
   return (
     <div className="toc-overlay" onClick={onClose}>
       <div className="toc-panel" onClick={(e) => e.stopPropagation()}>
         <div className="toc-panel-header">
-          <span className="toc-panel-title">目录</span>
-          <button className="toc-panel-close" onClick={onClose} aria-label="关闭">
+          <span className="toc-panel-title">{t(locale, "common.toc")}</span>
+          <button className="toc-panel-close" onClick={onClose} aria-label={t(locale, "common.close")}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
