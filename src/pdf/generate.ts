@@ -45,6 +45,9 @@ import { getActiveLocale } from "../i18n/locale";
 
 export const DRAFT_ATTACHMENT_NAME = "family-asset-guide-draft.json";
 export type PdfOutputMode = "relative" | "full";
+// 默认导出必须可作为后续编辑的安全存档。亲属版刻意不内嵌完整草稿，
+// 因此不能作为默认项，否则用户直接确认后会得到无法回导的 PDF。
+export const DEFAULT_PDF_OUTPUT_MODE: PdfOutputMode = "full";
 
 interface GeneratePdfOptions {
   mode?: PdfOutputMode;
@@ -68,7 +71,7 @@ interface VersionCaps {
   embedDraft: boolean; // 内嵌可导入草稿
 }
 
-function capsForMode(mode: PdfOutputMode): VersionCaps {
+export function capsForMode(mode: PdfOutputMode): VersionCaps {
   if (mode === "full") {
     return {
       itemAmounts: true, totalAndCharts: true, beneficiary: true, accountNumber: true,
@@ -80,7 +83,7 @@ function capsForMode(mode: PdfOutputMode): VersionCaps {
   // 不含每笔金额、分布饼图、登录凭证、密码指引与可导入草稿。
   return {
     itemAmounts: false, totalAndCharts: false, beneficiary: true, accountNumber: true,
-    contactInfo: true, loginCredentials: false, notes: false, passwordGuide: false,
+    contactInfo: true, loginCredentials: false, notes: true, passwordGuide: false,
     sop: true, custom: true, toc: true, embedDraft: false,
   };
 }
@@ -104,17 +107,22 @@ export async function extractDraftFromPdf(
     throw new Error(t(locale, "pdf.noDraft"));
   }
 
+  let draftEnvelope: unknown;
   for (const att of attachments) {
     try {
       const text = new TextDecoder().decode(att.data);
       const raw = JSON.parse(text);
       if (raw && typeof raw === "object" && "schemaVersion" in raw && "document" in raw) {
-        return unwrapDraft(raw);
+        draftEnvelope = raw;
+        break;
       }
     } catch {
       // 跳过无法解析的附件，继续尝试下一个
     }
   }
+
+  // JSON 已识别为草稿后，让版本/结构校验错误原样上抛，避免被误报成“没有草稿”。
+  if (draftEnvelope !== undefined) return unwrapDraft(draftEnvelope);
 
   throw new Error(t(locale, "pdf.noDraft"));
 }
@@ -631,7 +639,7 @@ async function drawAssetOverview(ctx: Ctx, doc: Document, caps: VersionCaps, loc
   );
 }
 
-function buildAssetRows(a: Asset, caps: VersionCaps, locale: Locale): AssetRow[] {
+export function buildAssetRows(a: Asset, caps: VersionCaps, locale: Locale): AssetRow[] {
   const isInsurance = a.type === "insurance";
   const isStockAccount = a.type === "us_stock" || a.type === "hk_stock" || a.type === "a_stock";
   const isDebt = a.type === "debt";
@@ -959,7 +967,7 @@ export async function generatePdf(
   onStatus?: (msg: string) => void,
   options: GeneratePdfOptions = {},
 ): Promise<Uint8Array> {
-  const mode = options.mode ?? "full";
+  const mode = options.mode ?? DEFAULT_PDF_OUTPUT_MODE;
   const locale = options.locale ?? getActiveLocale();
   const caps = capsForMode(mode);
   const modeLabel = mode === "full" ? t(locale, "password.fullTitle") : t(locale, "password.relativeTitle");

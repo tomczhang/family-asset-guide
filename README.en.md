@@ -23,7 +23,7 @@ One set of data can be exported into two PDF versions, so you can share the righ
 | Version | Intended reader | Included | Hidden |
 | --- | --- | --- | --- |
 | **Full version** | Spouse / trusted co-decision maker | Asset values, login clues, credential guidance, emergency workflow, importable draft | Nothing |
-| **Relative version** | Close family member | Asset categories, institutions, account clues, contacts, emergency workflow | Values, login credentials, password guidance, embedded draft |
+| **Relative version** | Close family member | Asset categories, institutions, account clues, contacts, notes, emergency workflow | Values, login credentials, password guidance, embedded draft |
 
 The core idea is to separate "knowing what exists" from "being able to log in and move assets." The relative version provides a map; the full version supports complete handoff.
 

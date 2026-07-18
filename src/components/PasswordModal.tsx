@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "./PasswordModal.css";
-import type { PdfOutputMode } from "../pdf/generate";
+import { DEFAULT_PDF_OUTPUT_MODE, type PdfOutputMode } from "../pdf/generate";
 import { useAppState } from "../state/context";
 import { t } from "../i18n";
 import type { Locale } from "../i18n/locale";
@@ -24,13 +24,13 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
   const { locale } = useAppState();
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
-  const [mode, setMode] = useState<PdfOutputMode>("relative");
+  const [mode, setMode] = useState<PdfOutputMode>(DEFAULT_PDF_OUTPUT_MODE);
 
   useEffect(() => {
     if (!open) return;
     setPassword("");
     setConfirmPw("");
-    setMode("relative");
+    setMode(DEFAULT_PDF_OUTPUT_MODE);
   }, [open]);
 
   if (!open) return null;
@@ -65,16 +65,6 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
             <div className="pdf-mode-group" role="radiogroup" aria-label={t(locale, "password.modeAria")}>
               <button
                 type="button"
-                className={`pdf-mode-option${mode === "relative" ? " pdf-mode-option--active" : ""}`}
-                role="radio"
-                aria-checked={mode === "relative"}
-                onClick={() => setMode("relative")}
-              >
-                <span className="pdf-mode-title">{t(locale, "password.relativeTitle")}</span>
-                <span className="pdf-mode-desc">{t(locale, "password.relativeDesc")}</span>
-              </button>
-              <button
-                type="button"
                 className={`pdf-mode-option${mode === "full" ? " pdf-mode-option--active" : ""}`}
                 role="radio"
                 aria-checked={mode === "full"}
@@ -82,6 +72,16 @@ export function PasswordModal({ open, generating, statusMessage, onClose, onConf
               >
                 <span className="pdf-mode-title">{t(locale, "password.fullTitle")}</span>
                 <span className="pdf-mode-desc">{t(locale, "password.fullDesc")}</span>
+              </button>
+              <button
+                type="button"
+                className={`pdf-mode-option${mode === "relative" ? " pdf-mode-option--active" : ""}`}
+                role="radio"
+                aria-checked={mode === "relative"}
+                onClick={() => setMode("relative")}
+              >
+                <span className="pdf-mode-title">{t(locale, "password.relativeTitle")}</span>
+                <span className="pdf-mode-desc">{t(locale, "password.relativeDesc")}</span>
               </button>
             </div>
 

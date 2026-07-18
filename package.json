@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npx vite build",
+    "test": "node tests/pdf-regression.mjs",
     "typecheck": "tsc -b",
     "preview": "vite preview"
   },
