@@ -17,6 +17,7 @@ export function Toolbar({ isMobile }: { isMobile: boolean }) {
   const [pdfPassword, setPdfPassword] = useState("");
   const [pdfError, setPdfError] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [showRelativeImportNotice, setShowRelativeImportNotice] = useState(false);
 
   const statusText = draftStatusLabel(draftStatus, locale);
 
@@ -67,7 +68,8 @@ export function Toolbar({ isMobile }: { isMobile: boolean }) {
       return;
     }
     try {
-      await importDraft(file);
+      const result = await importDraft(file);
+      if (result.dataScope === "relative") setShowRelativeImportNotice(true);
     } catch (err) {
       alert(`${t(locale, "toolbar.importFailed")}: ${err instanceof Error ? err.message : t(locale, "common.unknownError")}`);
     }
@@ -78,9 +80,10 @@ export function Toolbar({ isMobile }: { isMobile: boolean }) {
     setPdfBusy(true);
     setPdfError("");
     try {
-      await importDraft(pendingPdf, pdfPassword);
+      const result = await importDraft(pendingPdf, pdfPassword);
       setPendingPdf(null);
       setPdfPassword("");
+      if (result.dataScope === "relative") setShowRelativeImportNotice(true);
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : t(locale, "toolbar.importFailed"));
     } finally {
@@ -250,6 +253,25 @@ export function Toolbar({ isMobile }: { isMobile: boolean }) {
                 style={{ opacity: pdfBusy || pdfPassword.length === 0 ? 0.5 : 1 }}
               >
                 {pdfBusy ? t(locale, "toolbar.pdfUnlocking") : t(locale, "toolbar.pdfUnlock")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRelativeImportNotice && (
+        <div className="modal-overlay" onClick={() => setShowRelativeImportNotice(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">{t(locale, "toolbar.relativeImportTitle")}</div>
+            <div className="warning-banner">
+              {t(locale, "toolbar.relativeImportWarning")}
+            </div>
+            <p style={{ color: "var(--stone-600)", fontSize: 13, lineHeight: 1.6 }}>
+              {t(locale, "toolbar.relativeImportBody")}
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={() => setShowRelativeImportNotice(false)}>
+                {t(locale, "common.confirm")}
               </button>
             </div>
           </div>

@@ -18,6 +18,7 @@ try {
     DRAFT_ATTACHMENT_NAME,
     buildAssetRows,
     capsForMode,
+    createDraftDocumentForMode,
     extractDraftFromPdf,
   } = pdfModule;
   const { wrapDraft } = documentModule;
@@ -44,9 +45,25 @@ try {
   assert.equal(capsForMode("full").embedDraft, true);
   assert.equal(
     capsForMode("relative").embedDraft,
-    false,
-    "亲属版不能内嵌包含完整敏感信息的草稿",
+    true,
+    "亲属版应内嵌可回导的脱敏草稿",
   );
+
+  const relativeDraft = createDraftDocumentForMode(doc, "relative");
+  assert.equal(relativeDraft.assets.length, doc.assets.length);
+  assert.equal(relativeDraft.assets[0].institution, doc.assets[0].institution);
+  assert.equal(relativeDraft.assets[0].accountNumber, doc.assets[0].accountNumber);
+  assert.equal(relativeDraft.assets[0].notes, doc.assets[0].notes);
+  assert.equal(relativeDraft.assets[0].estimatedValue, "");
+  assert.equal(relativeDraft.assets[0].cashValue, "");
+  assert.equal(relativeDraft.assets[0].companyGrantedStockValue, "");
+  assert.equal(relativeDraft.assets[0].loginUsername, "");
+  assert.equal(relativeDraft.assets[0].registerEmail, "");
+  assert.equal(relativeDraft.assets[0].bindPhone, "");
+  assert.equal(relativeDraft.meta.passwordHolderHint, "");
+  assert.deepEqual(relativeDraft.access, { twoFactorEntries: [], seals: [] });
+  assert.notEqual(relativeDraft, doc, "脱敏不能修改原始完整草稿");
+  assert.notEqual(relativeDraft.assets[0], doc.assets[0], "资产脱敏必须使用副本");
 
   const pdf = await PDFDocument.create();
   pdf.addPage();
@@ -58,9 +75,10 @@ try {
   pdf.encrypt({ userPassword: password, ownerPassword: password });
   const bytes = await pdf.save();
   const imported = await extractDraftFromPdf(bytes, password);
-  assert.equal(imported.assets.length, doc.assets.length);
-  assert.equal(imported.assets[0].notes, doc.assets[0].notes);
-  assert.equal(imported.meta.familyName, doc.meta.familyName);
+  assert.equal(imported.dataScope, "full");
+  assert.equal(imported.document.assets.length, doc.assets.length);
+  assert.equal(imported.document.assets[0].notes, doc.assets[0].notes);
+  assert.equal(imported.document.meta.familyName, doc.meta.familyName);
 
   const futurePdf = await PDFDocument.create();
   futurePdf.addPage();
@@ -79,12 +97,29 @@ try {
 
   const relativePdf = await PDFDocument.create();
   relativePdf.addPage();
+  await relativePdf.attach(
+    new TextEncoder().encode(JSON.stringify(wrapDraft(relativeDraft, "relative"))),
+    DRAFT_ATTACHMENT_NAME,
+    { mimeType: "application/json" },
+  );
   relativePdf.encrypt({ userPassword: password, ownerPassword: password });
   const relativeBytes = await relativePdf.save();
+  const importedRelative = await extractDraftFromPdf(relativeBytes, password);
+  assert.equal(importedRelative.dataScope, "relative");
+  assert.equal(importedRelative.document.assets.length, doc.assets.length);
+  assert.equal(importedRelative.document.assets[0].notes, doc.assets[0].notes);
+  assert.equal(importedRelative.document.assets[0].estimatedValue, "");
+  assert.equal(importedRelative.document.assets[0].loginUsername, "");
+  assert.deepEqual(importedRelative.document.access, { twoFactorEntries: [], seals: [] });
+
+  const legacyRelativePdf = await PDFDocument.create();
+  legacyRelativePdf.addPage();
+  legacyRelativePdf.encrypt({ userPassword: password, ownerPassword: password });
+  const legacyRelativeBytes = await legacyRelativePdf.save();
   await assert.rejects(
-    () => extractDraftFromPdf(relativeBytes, password),
-    /亲属版为保护隐私不会内嵌完整草稿/,
-    "不含草稿的 PDF 应明确提示使用夫妻版，而不是笼统归因于旧版本",
+    () => extractDraftFromPdf(legacyRelativeBytes, password),
+    /可能由旧版本生成/,
+    "旧版不含草稿的 PDF 应给出兼容性提示",
   );
 
   console.log("PDF regression tests passed");

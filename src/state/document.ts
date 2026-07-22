@@ -7,6 +7,7 @@ import type {
   SopStage,
   CustomSection,
   DraftEnvelope,
+  DraftDataScope,
   DraftStatus,
 } from "./types";
 import { DEFAULT_SOP_STAGES } from "../data/sop-template";
@@ -299,15 +300,25 @@ export function docReducer(state: Document, action: DocAction): Document {
 
 const CURRENT_SCHEMA_VERSION = 1;
 
-export function wrapDraft(doc: Document): DraftEnvelope {
+export interface UnwrappedDraft {
+  document: Document;
+  dataScope: DraftDataScope;
+}
+
+export function wrapDraft(doc: Document, dataScope: DraftDataScope = "full"): DraftEnvelope {
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
+    dataScope,
     document: doc,
   };
 }
 
 export function unwrapDraft(raw: unknown): Document {
+  return unwrapDraftWithScope(raw).document;
+}
+
+export function unwrapDraftWithScope(raw: unknown): UnwrappedDraft {
   if (
     typeof raw !== "object" ||
     raw === null ||
@@ -317,7 +328,10 @@ export function unwrapDraft(raw: unknown): Document {
     throw new Error(t(getActiveLocale(), "draft.invalidFormat"));
   }
   const envelope = raw as DraftEnvelope;
-  return migrate(envelope);
+  return {
+    document: migrate(envelope),
+    dataScope: envelope.dataScope === "relative" ? "relative" : "full",
+  };
 }
 
 function migrate(envelope: DraftEnvelope): Document {

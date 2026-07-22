@@ -1,5 +1,5 @@
 import type { PDFPage, PDFFont, PDFDocument, Color } from "@cantoo/pdf-lib";
-import type { Asset, Document } from "../state/types";
+import type { Asset, Document, DraftDataScope } from "../state/types";
 
 // pdf-lib 与 fontkit 体积大（合计约 580KB gzip）且仅在生成/解析 PDF 时才用到。
 // 优先从国内 CDN 按固定版本加载（jsDelivr 打包的自包含 ESM，版本不可变、永久
@@ -36,7 +36,8 @@ async function loadPdfEngine(): Promise<{ PDFDocument: PdfLib["PDFDocument"]; fo
 const rgb = (r: number, g: number, b: number): Color =>
   ({ type: "RGB", red: r, green: g, blue: b }) as unknown as Color;
 
-import { wrapDraft, unwrapDraft } from "../state/document";
+import { wrapDraft, unwrapDraftWithScope } from "../state/document";
+import type { UnwrappedDraft } from "../state/document";
 import { formatCny, formatCoarseCny, groupAssetsByFilter, summarizeAssets } from "../state/asset-summary";
 import type { ChartItem } from "../state/asset-summary";
 import { t, assetTypeLabel, currencyLabel } from "../i18n";
@@ -45,8 +46,7 @@ import { getActiveLocale } from "../i18n/locale";
 
 export const DRAFT_ATTACHMENT_NAME = "family-asset-guide-draft.json";
 export type PdfOutputMode = "relative" | "full";
-// 默认导出必须可作为后续编辑的安全存档。亲属版刻意不内嵌完整草稿，
-// 因此不能作为默认项，否则用户直接确认后会得到无法回导的 PDF。
+// 默认导出仍使用包含全部信息的夫妻版；亲属版仅内嵌脱敏后的部分草稿。
 export const DEFAULT_PDF_OUTPUT_MODE: PdfOutputMode = "full";
 
 interface GeneratePdfOptions {
@@ -55,7 +55,7 @@ interface GeneratePdfOptions {
 }
 
 // 不同版本能展示哪些信息。夫妻版（full）给全；亲属版（relative）给"知情 + 执行"
-// 所需的信息，但隐去每笔金额、登录凭证、密码指引与可导入草稿。
+// 所需的信息，但隐去每笔金额、登录凭证与密码指引；其附件也只包含脱敏草稿。
 interface VersionCaps {
   itemAmounts: boolean; // 每笔资产的估值/理赔额/欠款余额/账户现金/授予股票
   totalAndCharts: boolean; // 总额 + 占比 + 概览饼图
@@ -68,7 +68,7 @@ interface VersionCaps {
   sop: boolean; // 紧急响应流程
   custom: boolean; // 自定义章节
   toc: boolean; // 目录
-  embedDraft: boolean; // 内嵌可导入草稿
+  embedDraft: boolean; // 内嵌可导入草稿（亲属版为脱敏草稿）
 }
 
 export function capsForMode(mode: PdfOutputMode): VersionCaps {
@@ -80,11 +80,32 @@ export function capsForMode(mode: PdfOutputMode): VersionCaps {
     };
   }
   // relative（亲属版）：只让亲属知道有哪些资产、账号与机构联系方式；
-  // 不含每笔金额、分布饼图、登录凭证、密码指引与可导入草稿。
+  // 不含每笔金额、分布饼图、登录凭证与密码指引，但内嵌可回导的脱敏草稿。
   return {
     itemAmounts: false, totalAndCharts: false, beneficiary: true, accountNumber: true,
     contactInfo: true, loginCredentials: false, notes: true, passwordGuide: false,
-    sop: true, custom: true, toc: true, embedDraft: false,
+    sop: true, custom: true, toc: true, embedDraft: true,
+  };
+}
+
+// 家属版附件只能包含其可见/可分享的信息，防止通过“重新导入”读取被 PDF 隐藏的
+// 金额、登录凭证和密码指引。保留空的密码指引模块，方便导入后继续补全。
+export function createDraftDocumentForMode(doc: Document, mode: PdfOutputMode): Document {
+  if (mode === "full") return doc;
+  return {
+    ...doc,
+    meta: { ...doc.meta, passwordHolderHint: "" },
+    assets: doc.assets.map((asset) => ({
+      ...asset,
+      estimatedValue: "",
+      cashValue: "",
+      companyGrantedStockValue: "",
+      loginUsername: "",
+      registerEmail: "",
+      bindPhone: "",
+    })),
+    access: { twoFactorEntries: [], seals: [] },
+    accessRemoved: false,
   };
 }
 
@@ -92,7 +113,7 @@ export function capsForMode(mode: PdfOutputMode): VersionCaps {
 export async function extractDraftFromPdf(
   bytes: Uint8Array | ArrayBuffer,
   password: string,
-): Promise<Document> {
+): Promise<UnwrappedDraft> {
   const { PDFDocument } = await loadPdfEngine();
   const locale = getActiveLocale();
   let pdf: PDFDocument;
@@ -122,7 +143,7 @@ export async function extractDraftFromPdf(
   }
 
   // JSON 已识别为草稿后，让版本/结构校验错误原样上抛，避免被误报成“没有草稿”。
-  if (draftEnvelope !== undefined) return unwrapDraft(draftEnvelope);
+  if (draftEnvelope !== undefined) return unwrapDraftWithScope(draftEnvelope);
 
   throw new Error(t(locale, "pdf.noDraft"));
 }
@@ -1132,11 +1153,15 @@ export async function generatePdf(
   }
 
   if (caps.embedDraft) {
-    // 夫妻版嵌入草稿数据，便于将来直接导入此 PDF 继续编辑；亲属版不嵌入，避免泄露完整明细。
-    const draftBytes = new TextEncoder().encode(JSON.stringify(wrapDraft(doc)));
+    // 两版都可回导；亲属版只嵌入与其信息范围一致的脱敏草稿，绝不夹带完整明细。
+    const dataScope: DraftDataScope = mode;
+    const draftDocument = createDraftDocumentForMode(doc, mode);
+    const draftBytes = new TextEncoder().encode(JSON.stringify(wrapDraft(draftDocument, dataScope)));
     await pdf.attach(draftBytes, DRAFT_ATTACHMENT_NAME, {
       mimeType: "application/json",
-      description: "family-asset-guide draft data",
+      description: mode === "full"
+        ? "family-asset-guide full draft data"
+        : "family-asset-guide redacted relative draft data",
     });
   }
 

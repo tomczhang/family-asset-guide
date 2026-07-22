@@ -98,9 +98,13 @@ export interface Document {
   customRemoved: boolean;
 }
 
+export type DraftDataScope = "full" | "relative";
+
 export interface DraftEnvelope {
   schemaVersion: number;
   exportedAt: string;
+  // 旧草稿没有该字段，导入时按 full 处理以保持兼容。
+  dataScope?: DraftDataScope;
   document: Document;
 }
 

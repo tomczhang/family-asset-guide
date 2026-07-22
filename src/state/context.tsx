@@ -8,13 +8,13 @@ import {
   type ReactNode,
   type Dispatch,
 } from "react";
-import type { Document, DraftStatus } from "./types";
+import type { Document, DraftDataScope, DraftStatus } from "./types";
 import {
   createEmptyDocument,
   docReducer,
   type DocAction,
   wrapDraft,
-  unwrapDraft,
+  unwrapDraftWithScope,
 } from "./document";
 import { ConfirmDialog, type ConfirmOptions } from "../components/ConfirmDialog";
 import { extractDraftFromPdf } from "../pdf/generate";
@@ -29,7 +29,7 @@ interface AppState {
   draftStatus: DraftStatus;
   markModified: () => void;
   exportDraft: () => void;
-  importDraft: (file: File, password?: string) => Promise<void>;
+  importDraft: (file: File, password?: string) => Promise<{ dataScope: DraftDataScope }>;
   clearAll: () => void;
   confirm: (options: ConfirmOptions) => Promise<boolean>;
   openPasswordModal: boolean;
@@ -115,16 +115,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (file: File, password?: string) => {
       const isPdf =
         file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-      let loaded;
+      let imported;
       if (isPdf) {
         if (!password) throw new Error(t(locale, "draft.importPdfNeedPassword"));
         const bytes = await file.arrayBuffer();
-        loaded = await extractDraftFromPdf(bytes, password);
+        imported = await extractDraftFromPdf(bytes, password);
       } else {
         const text = await file.text();
         const raw = JSON.parse(text);
-        loaded = unwrapDraft(raw);
+        imported = unwrapDraftWithScope(raw);
       }
+      const loaded = imported.document;
       loaded.accessRemoved = false;
       loaded.sopRemoved = false;
       loaded.customRemoved = false;
@@ -133,6 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       dispatch({ type: "LOAD_DOCUMENT", document: loaded });
       setDraftStatus({ kind: "clean" });
+      return { dataScope: imported.dataScope };
     },
     [locale],
   );

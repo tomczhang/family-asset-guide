@@ -23,7 +23,7 @@ One set of data can be exported into two PDF versions, so you can share the righ
 | Version | Intended reader | Included | Hidden |
 | --- | --- | --- | --- |
 | **Full version** | Spouse / trusted co-decision maker | Asset values, login clues, credential guidance, emergency workflow, importable draft | Nothing |
-| **Relative version** | Close family member | Asset categories, institutions, account clues, contacts, notes, emergency workflow | Values, login credentials, password guidance, embedded draft |
+| **Relative version** | Close family member | Asset categories, institutions, account clues, contacts, notes, emergency workflow, importable redacted draft | Values, login credentials, password guidance, full draft |
 
 The core idea is to separate "knowing what exists" from "being able to log in and move assets." The relative version provides a map; the full version supports complete handoff.
 
@@ -55,7 +55,7 @@ The screenshots use sample data. The generated PDF is automatically laid out fro
 
 - **Offline-first**: data stays in the current browser page and is not uploaded to a server
 - **AES-256 encrypted PDF**: the full version is password protected
-- **PDF as archive**: the full encrypted PDF embeds the complete draft and can be imported again with the password
+- **PDF as archive**: the full edition embeds the complete draft, while the relatives edition embeds a redacted draft; both can be imported again with the password
 - **Two export versions**: generate a complete version and a redacted family version from the same data
 - **Asset classification**: supports stocks, funds, bank deposits, insurance, real estate, crypto assets, debts, and more
 - **Institution presets**: includes common financial institution URLs, support phone numbers, and app download clues
